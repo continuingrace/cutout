@@ -371,7 +371,7 @@ function prep(){
     coverDraw(p.base,p.img);applyTone(p.base,S.tone);
     p.half=makeHalf(p.base,S.half);
     p.avg=avgColor(p.base);
-    p.duo=null;p.duoKey=null;p.sil=null;
+    p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};
     if(p.vseed==null)p.vseed=(Math.random()*1e9)|0;
   });
   textCache={};buildShots();
@@ -539,8 +539,6 @@ function placeholder(){
   ctx.fillStyle='#0d0d0f';ctx.fillRect(0,0,W,H);
   if(!dotPat)dotPat=ctx.createPattern(dotTile(6,.9),'repeat');
   ctx.save();ctx.globalAlpha=.07;ctx.fillStyle=dotPat;ctx.fillRect(0,0,W,H);ctx.restore();
-  ctx.fillStyle='#57575c';ctx.textAlign='center';ctx.font='700 40px Pretendard, sans-serif';
-  ctx.fillText('사진을 넣어 주세요',W/2,H/2);
 }
 
 /* ── motion presets: return {sx,sy,rot,zoom,punch} for time t ── */
@@ -752,61 +750,140 @@ function jagged(r,rx,ry,n){
 function path(p){ctx.beginPath();for(let i=0;i<p.length;i++){
   if(i)ctx.lineTo(p[i][0],p[i][1]);else ctx.moveTo(p[i][0],p[i][1]);}ctx.closePath();}
 
+/* Build a torn-paper scrap on an offscreen canvas.
+   Instead of stroking a vector outline, we rasterise the blob then chew the
+   edge pixel-by-pixel and sprout pale fibres, so the rim reads as hand-torn
+   paper (deckle edge) rather than a clean cut. Cached per (photo,slot,shape). */
+function buildScrap(ph,seed,rad,ry,rough,zoom,ox,oy){
+  const pad=Math.ceil(rad*0.5)+24;
+  const w=Math.ceil(rad*2+pad*2),h=Math.ceil(ry*2+pad*2);
+  const cvx=document.createElement('canvas');cvx.width=w;cvx.height=h;
+  const x=cvx.getContext('2d');
+  const cx=w/2,cy=h/2;
+  const r=rng(seed);
+
+  // 1) base torn silhouette as a filled shape (coarse control pts, subdivided)
+  const nverts=10+((r()*7)|0);
+  const pts=tornPath(rng(seed*3+1),cx,cy,rad,ry,nverts,rough);
+  x.beginPath();
+  for(let i=0;i<pts.length;i++){i?x.lineTo(pts[i][0],pts[i][1]):x.moveTo(pts[i][0],pts[i][1]);}
+  x.closePath();
+  x.fillStyle='#fff';x.fill();
+
+  // 2) chew the edge: knock out bites of varying size all along the border so
+  //    the outline loses its smooth vector quality and turns crumbly
+  x.globalCompositeOperation='destination-out';
+  const per=pts.length;
+  for(let i=0;i<per;i++){
+    const a=pts[i],b=pts[(i+1)%per];
+    const dist=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    const steps=Math.max(2,(dist/4)|0);
+    for(let s=0;s<steps;s++){
+      const u=s/steps;
+      const px=a[0]+(b[0]-a[0])*u,py=a[1]+(b[1]-a[1])*u;
+      // most bites tiny, a few large — power curve gives crumbly deckle
+      const big=r()<.12;
+      const rr=(big? rad*(.05+r()*.09) : rad*(.008+r()*.03))*(0.4+rough);
+      x.beginPath();x.arc(px+(r()-.5)*4,py+(r()-.5)*4,rr,0,6.2832);x.fill();
+    }
+  }
+  x.globalCompositeOperation='source-over';
+
+  // 3) paint the PHOTO into whatever paper remains
+  x.save();
+  x.globalCompositeOperation='source-atop';
+  x.drawImage(ph.base, cx-W*zoom/2+ox, cy-H*zoom/2+oy, W*zoom, H*zoom);
+  x.restore();
+
+  // 4) inner white deckle band: erode a copy of the mask and subtract, leaving
+  //    a ragged pale rim of exposed paper just inside the torn edge
+  //    (approximate by stroking the shape with a soft pale line, clipped)
+  x.save();
+  x.globalCompositeOperation='source-atop';
+  x.lineJoin='round';x.lineCap='round';
+  for(let pass=0;pass<3;pass++){
+    x.beginPath();
+    for(let i=0;i<pts.length;i++){i?x.lineTo(pts[i][0],pts[i][1]):x.moveTo(pts[i][0],pts[i][1]);}
+    x.closePath();
+    x.globalAlpha=.5-pass*.13;
+    x.lineWidth=(rad*.05)*(1-pass*.28)*(0.6+rough);
+    x.strokeStyle=pass<2?'#f6f2e9':'#e9e3d5';
+    x.stroke();
+  }
+  x.restore();
+
+  // 5) fibrous paper grain over the whole scrap for painterly tooth.
+  //    build the grain on a temp layer, then stamp it with source-atop so it
+  //    only darkens existing scrap pixels and never bleeds past the torn edge.
+  {
+    const gl=document.createElement('canvas');gl.width=w;gl.height=h;
+    const gx=gl.getContext('2d');
+    const gt=grains[(seed>>>3)&3];
+    gx.fillStyle=gx.createPattern(gt,'repeat');gx.fillRect(0,0,w,h);
+    x.save();
+    x.globalCompositeOperation='source-atop';
+    x.globalAlpha=.42;
+    x.drawImage(gl,0,0);
+    x.restore();
+  }
+
+  // 6) loose fibres sprouting outward from the rim (pale, thin, a few per edge)
+  x.save();
+  x.strokeStyle='rgba(246,242,233,.9)';x.lineCap='round';
+  for(let i=0;i<pts.length;i++){
+    if(r()<.55)continue;
+    const p=pts[i];
+    const nx=p[0]-cx,ny=p[1]-cy,nl=Math.hypot(nx,ny)||1;
+    const len=rad*(.02+r()*.06);
+    x.globalAlpha=.3+r()*.5;x.lineWidth=.6+r()*1.1;
+    x.beginPath();x.moveTo(p[0],p[1]);
+    x.lineTo(p[0]+nx/nl*len+(r()-.5)*3,p[1]+ny/nl*len+(r()-.5)*3);
+    x.stroke();
+  }
+  x.restore();
+
+  return {canvas:cvx,cx,cy,w,h};
+}
+let scrapGrainPats=null;
+
 function drawCut(ph,shot,k,lt,mo){
   // per-photo + per-slot variety: shape, size, tilt, framing all differ
   const r=rng((shot.seed+k*131+ph.vseed)>>>0);
   const cx=W*(.20+r()*.60),cy=H*(.24+r()*.48);
   const rad=W*(.26+r()*.24)*(k===0?1.18:.74+r()*.3);
-  const ry=rad*(.9+r()*.5);                 // non-uniform aspect per cut
+  const ry=rad*(.9+r()*.5);
   const rot=(r()-.5)*.28;
   const dir=r()<.5?-1:1,drift=(lt-.5)*W*.06*dir;
   const sc=1+mo.punch*.06*(S.shake/100);
   const zoom=1.3+r()*.7,ox=(r()-.5)*W*.3,oy=(r()-.5)*H*.24;
   const rough=S.tornedge/100;
-  const nverts=9+((r()*7)|0);
-  const pts=tornPath(rng((shot.seed+k*977+ph.vseed)>>>0),0,0,rad,ry,nverts,rough);
+
+  // scrap raster is expensive → cache it on the photo keyed by slot+shape params
+  const key=k+'|'+(rad|0)+'|'+(ry|0)+'|'+(rough*100|0)+'|'+(zoom*100|0)+'|'+(ox|0)+'|'+(oy|0);
+  if(!ph.scraps)ph.scraps={};
+  let sc0=ph.scraps[key];
+  if(!sc0){
+    // drop any previous scrap for this slot so memory stays bounded
+    Object.keys(ph.scraps).forEach(kk=>{if(kk.indexOf(k+'|')===0)delete ph.scraps[kk];});
+    sc0=buildScrap(ph,(shot.seed+k*977+ph.vseed)>>>0,rad,ry,rough,zoom,ox,oy);
+    ph.scraps[key]=sc0;
+  }
 
   ctx.save();
   ctx.translate(cx+mo.sx+drift,cy+mo.sy);ctx.rotate(rot+mo.rot*.5);ctx.scale(sc,sc);
 
-  // drop shadow so the scrap sits above the layer below
-  ctx.save();ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=18;ctx.shadowOffsetY=7;
-  ctx.fillStyle='#efeae0';polyPath(pts);ctx.fill();ctx.restore();
-
-  // white paper backing (the torn edge shows this behind the photo)
-  const edge=W*(.02+rough*.03);            // wider ragged rim = more torn look
-  ctx.fillStyle='#f4f1e8';polyPath(pts);ctx.fill();
-
-  // paper fibre grain on the white backing so the rim isn't a flat color
-  ctx.save();polyPath(pts);ctx.clip();
-  if(!grainPats)grainPats=grains.map(g=>ctx.createPattern(g,'repeat'));
-  ctx.globalAlpha=.5;ctx.globalCompositeOperation='multiply';
-  ctx.fillStyle=grainPats[(ph.vseed+k)&3];
-  ctx.fillRect(-rad*2,-ry*2,rad*4,ry*4);
-  // faint warm shadow just inside the torn edge (thickness of the paper)
-  ctx.globalCompositeOperation='source-over';ctx.globalAlpha=.20;
-  ctx.lineWidth=edge*1.6;ctx.strokeStyle='rgba(120,105,80,.9)';polyPath(pts);ctx.stroke();
-  ctx.restore();
-
-  // photo, inset with an irregular rim: shrink each torn point toward the
-  // centroid by a jittered amount so the white edge itself stays ragged
-  const jr=rng((shot.seed+k*613+ph.vseed)>>>0);
-  const inner=pts.map(p=>{
-    const d=Math.hypot(p[0],p[1])||1;
-    const cut=edge*(.6+jr()*1.1);           // uneven inset per vertex
-    const f=Math.max(0,(d-cut)/d);
-    return [p[0]*f,p[1]*f];
-  });
+  // soft drop shadow under the scrap
   ctx.save();
-  polyPath(inner);ctx.clip();
-  ctx.drawImage(ph.base,-W*zoom/2+ox,-H*zoom/2+oy,W*zoom,H*zoom);
-  if(mo.punch>.3){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=.18*mo.punch;
-    ctx.drawImage(ph.base,-W*zoom/2+ox+11*mo.punch,-H*zoom/2+oy,W*zoom,H*zoom);
-    ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;}
+  ctx.shadowColor='rgba(0,0,0,.45)';ctx.shadowBlur=20;ctx.shadowOffsetY=8;
+  ctx.drawImage(sc0.canvas,-sc0.cx,-sc0.cy);
   ctx.restore();
 
-  // soft torn rim shading between photo and paper
-  ctx.lineWidth=1.4;ctx.strokeStyle='rgba(150,140,120,.45)';polyPath(inner);ctx.stroke();
+  // beat flash: faint additive echo of the scrap on strong beats
+  if(mo.punch>.35){
+    ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=.15*mo.punch;
+    ctx.drawImage(sc0.canvas,-sc0.cx+9*mo.punch,-sc0.cy);
+    ctx.restore();
+  }
   ctx.restore();
 }
 
