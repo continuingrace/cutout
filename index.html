@@ -15,13 +15,14 @@ html,body{margin:0;padding:0;background:var(--ink);color:var(--paper);
   font-family:Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
 body{padding-bottom:env(safe-area-inset-bottom)}
-header{position:sticky;top:0;z-index:20;padding:14px 16px 12px;background:rgba(10,10,11,.92);
-  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:10px}
+#topbar{position:sticky;top:0;z-index:20;background:rgba(10,10,11,.97);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding-bottom:6px}
+header{padding:14px 16px 6px;display:flex;align-items:baseline;gap:10px}
 header h1{margin:0;font-size:19px;font-weight:900;letter-spacing:-.04em}
 header h1 em{font-style:normal;color:var(--red)}
 header span{font-size:10px;letter-spacing:.22em;color:var(--dim);text-transform:uppercase;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.stage{padding:16px 16px 4px;display:flex;justify-content:center}
+.stage{padding:12px 16px 2px;display:flex;justify-content:center}
 .frame{position:relative;width:100%;max-width:300px;aspect-ratio:9/16;background:#000;
   border:1px solid var(--line);overflow:hidden}
 canvas#cv{width:100%;height:100%;display:block}
@@ -80,21 +81,23 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 </head>
 <body>
 
-<header>
-  <h1>CUT<em>OUT</em></h1>
-  <span id="mode">halftone · 9:16</span>
-</header>
+<div id="topbar">
+  <header>
+    <h1>CUT<em>OUT</em></h1>
+    <span id="mode">halftone · 9:16</span>
+  </header>
 
-<div class="stage">
-  <div class="frame">
-    <canvas id="cv"></canvas>
-    <div class="badge" id="recbadge">● REC</div>
+  <div class="stage">
+    <div class="frame">
+      <canvas id="cv"></canvas>
+      <div class="badge" id="recbadge">● REC</div>
+    </div>
   </div>
-</div>
 
-<div class="bar">
-  <button id="play" class="ghost">일시정지</button>
-  <button id="rec" class="primary">영상 만들기</button>
+  <div class="bar">
+    <button id="play" class="ghost">일시정지</button>
+    <button id="rec" class="primary">영상 만들기</button>
+  </div>
 </div>
 
 <main>
@@ -112,6 +115,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   <div class="chips" id="style">
     <button class="chip" data-v="cutout">하프톤 컷아웃</button>
     <button class="chip" data-v="mixed">믹스드 미디어</button>
+    <button class="chip" data-v="neon">네온 스크리블</button>
   </div>
   <p class="hint" id="stylehint"></p>
 </section>
@@ -159,6 +163,17 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   <p class="hint">획은 프레임마다 다시 그려집니다. 떨림 0이면 멈춰 있고, 8~12 사이가 손으로 그린 느낌에 가깝습니다.</p>
 </section>
 
+<section id="sec-neon">
+  <h2>네온 스크리블</h2>
+  <label class="f">보조 컬러 (사진의 밝은 부분에 섞입니다)</label>
+  <div class="chips" id="acc2"></div>
+  <div class="row" style="margin-top:16px"><div class="k">톤 강도</div><input type="range" id="ngrade" min="0" max="100" step="5"><div class="v" id="ngradev"></div></div>
+  <div class="row"><div class="k">마커 윤곽선</div><input type="range" id="nray" min="0" max="100" step="5"><div class="v" id="nrayv"></div></div>
+  <div class="row"><div class="k">낙서 두들</div><input type="range" id="ndoodle" min="0" max="100" step="5"><div class="v" id="ndoodlev"></div></div>
+  <div class="row"><div class="k">두들 떨림</div><input type="range" id="nboil" min="0" max="16" step="1"><div class="v" id="nboilv"></div></div>
+  <p class="hint">위 톤 섹션의 첫 번째 컬러가 어두운 부분, 여기 보조 컬러가 밝은 부분에 섞이는 듀오톤입니다. 굵은 마커 윤곽선과 방사형 크레용 획, 손낙서 고리가 컷마다 다시 배치됩니다.</p>
+</section>
+
 <section>
   <h2>톤</h2>
   <div class="chips" id="tone">
@@ -199,7 +214,8 @@ const KEY='re_cutout_v2',TPKEY='re_cutout_tpl_v2';
 const ACCENTS=['#e4322b','#1f3f8f','#f2c53d','#3fb27f','#efece4'];
 
 let S={style:'cutout',bpm:124,dur:8,tone:'mono',accent:ACCENTS[0],half:8,grain:35,cuts:2,shake:100,
-  text:'',tsize:100,tpos:42,frame:'mix',weave:60,pastel:60,boil:9,print:55,hand:50};
+  text:'',tsize:100,tpos:42,frame:'mix',weave:60,pastel:60,boil:9,print:55,hand:50,
+  accent2:ACCENTS[2],ngrade:75,nray:60,ndoodle:45,nboil:7};
 
 let photos=[],shots=[],playing=true,recording=false,frameN=0;
 let audioEl=null,audioSrc=null,audioCtx=null,audioDest=null,aoff=0;
@@ -277,7 +293,7 @@ function weaveTile(){
   x.putImageData(d,0,0);return c;
 }
 const grains=[grainTile(),grainTile(),grainTile(),grainTile()];
-let grainPats=null,dotPat=null,printPat=null,weavePat=null,vig=null,vigSoft=null;
+let grainPats=null,dotPat=null,printPat=null,weavePat=null,vig=null,vigSoft=null,scanPat=null;
 
 /* ── photos ── */
 function prep(){
@@ -287,6 +303,7 @@ function prep(){
     coverDraw(p.base,p.img);applyTone(p.base,S.tone);
     p.half=makeHalf(p.base,S.half);
     p.avg=avgColor(p.base);
+    p.duo=null;p.duoKey=null;
   });
   textCache={};buildShots();
 }
@@ -317,10 +334,10 @@ function renderThumbs(){
 function buildShots(){
   shots=[];if(!photos.length)return;
   const beat=60/S.bpm,r=rng(1234),lines=S.text.split('\n').map(s=>s.trim());
-  const slow=S.style==='mixed';
+  const mul=S.style==='mixed'?[4,6]:S.style==='neon'?[2,3]:[1,2];
   let t=0,i=0;
   while(t<S.dur+.5){
-    const len=slow?beat*(r()<.5?4:6):beat*(r()<.34?1:2);
+    const len=beat*(r()<.5?mul[0]:mul[1]);
     shots.push({idx:i,start:t,len:len,seed:(r()*1e9)|0,pi:i%photos.length,
       bi:(i+(photos.length>1?1:0))%photos.length,
       text:lines.length?lines[i%lines.length]:''});
@@ -592,10 +609,116 @@ function drawMixed(t){
   vignette(true);
 }
 
+/* ── engine C : neon scribble ── */
+function makeDuo(base,colA,colB){
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const x=c.getContext('2d');
+  const src=base.getContext('2d').getImageData(0,0,W,H);
+  const out=x.createImageData(W,H),d=src.data,o=out.data;
+  const A=hex2rgb(colA),B=hex2rgb(colB);
+  for(let i=0;i<d.length;i+=4){
+    const l=Math.pow((.299*d[i]+.587*d[i+1]+.114*d[i+2])/255,.82);
+    o[i]=A[0]+(B[0]-A[0])*l;o[i+1]=A[1]+(B[1]-A[1])*l;o[i+2]=A[2]+(B[2]-A[2])*l;o[i+3]=255;
+  }
+  x.putImageData(out,0,0);return c;
+}
+function scanTile(){
+  const c=document.createElement('canvas');c.width=4;c.height=4;
+  const x=c.getContext('2d');x.fillStyle='rgba(0,0,0,.5)';x.fillRect(0,0,4,2);return c;
+}
+function drawRays(shot,t,cx,cy){
+  if(S.nray<=0)return;
+  const amount=S.nray/100;
+  const step=S.nboil>0?Math.floor(t*S.nboil):0;
+  const base=rng(shot.seed*5+3),jit=rng((shot.seed*5+3+step*57191)>>>0);
+  const pal=[S.accent,S.accent2,'#ffffff'];
+  const count=Math.round(5+amount*13);
+  ctx.save();
+  for(let i=0;i<count;i++){
+    const ang=base()*6.2832,rr0=W*(.09+base()*.10),len=W*(.20+base()*.32)*amount;
+    const col=pal[Math.floor(base()*pal.length)];
+    const x0=cx+Math.cos(ang)*rr0,y0=cy+Math.sin(ang)*rr0;
+    const x2=cx+Math.cos(ang)*(rr0+len),y2=cy+Math.sin(ang)*(rr0+len);
+    const mx=(x0+x2)/2+(jit()-.5)*30,my=(y0+y2)/2+(jit()-.5)*30;
+    pastelStroke(x0+(jit()-.5)*6,y0+(jit()-.5)*6,mx,my,x2+(jit()-.5)*6,y2+(jit()-.5)*6,
+      col,W*(.02+base()*.026),jit,.85);
+  }
+  ctx.restore();
+}
+function drawOutline(shot,cx,cy){
+  const amount=S.nray/100;if(amount<=0)return;
+  const or1=rng(shot.seed*13+41),or2=rng(shot.seed*13+42);
+  const pts1=jagged(or1,W*.34,H*.30,15),pts2=jagged(or2,W*.29,H*.255,13);
+  ctx.save();ctx.translate(cx,cy);ctx.lineJoin='round';
+  ctx.strokeStyle=S.accent;ctx.lineWidth=9*amount+2;ctx.globalAlpha=.85;
+  path(pts1);ctx.stroke();
+  ctx.strokeStyle=S.accent2;ctx.lineWidth=5.5*amount+1.5;ctx.globalAlpha=.8;
+  path(pts2);ctx.stroke();
+  ctx.restore();
+}
+function drawDoodles(shot,t){
+  if(S.ndoodle<=0)return;
+  const amount=S.ndoodle/100;
+  const step=S.nboil>0?Math.floor(t*S.nboil):0;
+  const base=rng(shot.seed*9+17),jit=rng((shot.seed*9+17+step*192637)>>>0);
+  const count=Math.round(2+amount*6);
+  ctx.save();ctx.lineWidth=2.4;ctx.strokeStyle='rgba(255,255,255,.85)';
+  for(let i=0;i<count;i++){
+    const cx=W*(.12+base()*.76),cy=H*(.14+base()*.68);
+    const rad=W*(.028+base()*.05),wob=1+(jit()-.5)*.14;
+    ctx.globalAlpha=.5+base()*.35;
+    ctx.beginPath();
+    const pts=10;
+    for(let k=0;k<=pts;k++){
+      const a=k/pts*6.2832,rr=rad*wob*(1+.14*Math.sin(a*3+step));
+      const x=cx+Math.cos(a)*rr,y=cy+Math.sin(a)*rr;
+      if(k===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawNeon(t){
+  const shot=shotAt(t),lt=clamp((t-shot.start)/shot.len,0,1);
+  const beat=60/S.bpm,bp=(t/beat)%1,punch=Math.pow(1-bp,5),amt=S.shake/100;
+  const rb=rng(Math.floor(t*S.bpm/60)*7919+31);
+  const sx=(rb()-.5)*18*amt*punch,sy=(rb()-.5)*18*amt*punch;
+
+  const ph=photos[shot.pi%photos.length];
+  const key=S.accent+'|'+S.accent2;
+  if(ph.duoKey!==key){ph.duo=makeDuo(ph.base,S.accent,S.accent2);ph.duoKey=key;}
+
+  ctx.fillStyle='#050506';ctx.fillRect(0,0,W,H);
+  const z=1.06+lt*.10+punch*.02*amt;
+  ctx.save();
+  ctx.translate(W/2+sx,H/2+sy);ctx.scale(z,z);
+  ctx.drawImage(ph.base,-W/2,-H/2);
+  ctx.globalAlpha=S.ngrade/100;
+  ctx.drawImage(ph.duo,-W/2,-H/2);
+  ctx.globalAlpha=1;
+  ctx.restore();
+
+  drawRays(shot,t,W/2+sx,H*.46+sy);
+  drawOutline(shot,W/2+sx,H*.46+sy);
+  drawDoodles(shot,t);
+
+  const tc=getText(shot.text,'chalk',shot.idx%2===0?S.accent2:'#ffffff');
+  if(tc){ctx.save();ctx.globalAlpha=.95;ctx.drawImage(tc,0,0);ctx.restore();}
+
+  if(!scanPat)scanPat=ctx.createPattern(scanTile(),'repeat');
+  ctx.save();ctx.globalCompositeOperation='multiply';ctx.globalAlpha=.2;
+  ctx.fillStyle=scanPat;ctx.fillRect(0,0,W,H);ctx.restore();
+
+  grainPass(S.grain/100*.5);
+  vignette(false);
+}
+
 /* ── router ── */
 function drawFrame(t){
   if(!photos.length||!shots.length){placeholder();return;}
-  if(S.style==='mixed')drawMixed(t);else drawCutout(t);
+  if(S.style==='mixed')drawMixed(t);
+  else if(S.style==='neon')drawNeon(t);
+  else drawCutout(t);
   frameN++;
 }
 
@@ -702,6 +825,10 @@ reg2('pastel','pastel',v=>v+'%');
 reg2('boil','boil',v=>v?v+'fps':'멈춤');
 reg2('print','print',v=>v+'%');
 reg2('hand','hand',v=>v+'%');
+reg2('ngrade','ngrade',v=>v+'%',()=>{});
+reg2('nray','nray',v=>v+'%');
+reg2('ndoodle','ndoodle',v=>v+'%');
+reg2('nboil','nboil',v=>v?v+'fps':'멈춤');
 
 const ta=document.getElementById('text');
 ta.addEventListener('input',function(){S.text=ta.value;textCache={};buildShots();persist();});
@@ -717,13 +844,16 @@ const syncTone=chipGroup('tone','tone',function(){prep();});
 const syncFrame=chipGroup('frame','frame');
 
 function applyStyleUI(){
-  const mixed=S.style==='mixed';
+  const mixed=S.style==='mixed',neon=S.style==='neon',cutout=S.style==='cutout';
   document.getElementById('sec-mixed').classList.toggle('hide',!mixed);
-  document.getElementById('rowcuts').style.display=mixed?'none':'flex';
-  document.getElementById('rowhalf').style.display=mixed?'none':'flex';
-  document.getElementById('mode').textContent=(mixed?'mixed media':'halftone')+' · 9:16';
+  document.getElementById('sec-neon').classList.toggle('hide',!neon);
+  document.getElementById('rowcuts').style.display=cutout?'flex':'none';
+  document.getElementById('rowhalf').style.display=cutout?'flex':'none';
+  const label=mixed?'mixed media':neon?'neon scribble':'halftone';
+  document.getElementById('mode').textContent=label+' · 9:16';
   document.getElementById('stylehint').textContent=mixed
     ?'캔버스 천에 인쇄한 질감 위로 오일파스텔 획이 얹히고, 획은 프레임마다 다시 그려집니다. 컷이 길고 느리게 넘어갑니다.'
+    :neon?'사진이 두 컬러 듀오톤으로 물들고, 굵은 마커 윤곽선과 방사형 크레용 획, 손낙서 고리가 컷마다 새로 배치됩니다.'
     :'사진이 각진 조각으로 찢겨 하프톤 배경 위에 얹히고, 비트마다 흔들립니다.';
   textCache={};
 }
@@ -735,6 +865,14 @@ ACCENTS.forEach(function(c){
   accWrap.appendChild(b);
 });
 function syncAcc(){accWrap.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.v===S.accent));}
+
+const accWrap2=document.getElementById('acc2');
+ACCENTS.forEach(function(c){
+  const b=document.createElement('button');b.className='sw';b.style.background=c;b.dataset.v=c;
+  b.onclick=function(){S.accent2=c;syncAcc2();persist();};
+  accWrap2.appendChild(b);
+});
+function syncAcc2(){accWrap2.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.v===S.accent2));}
 
 document.getElementById('add').onclick=()=>document.getElementById('file').click();
 document.getElementById('file').onchange=function(e){addFiles(e.target.files);e.target.value='';};
@@ -760,7 +898,7 @@ document.getElementById('share').onclick=shareFile;
 /* ── persistence ── */
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 function syncAll(){
-  ta.value=S.text;syncStyle();syncTone();syncFrame();syncAcc();
+  ta.value=S.text;syncStyle();syncTone();syncFrame();syncAcc();syncAcc2();
   rangeEls.forEach(el=>el._sync());applyStyleUI();
 }
 function restore(){
