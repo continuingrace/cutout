@@ -16,22 +16,34 @@ html,body{margin:0;padding:0;background:var(--ink);color:var(--paper);
   -webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
 body{padding-bottom:env(safe-area-inset-bottom)}
 #topbar{position:fixed;top:0;left:0;right:0;z-index:30;background:rgba(10,10,11,.98);
-  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding-bottom:6px;
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
   padding-top:env(safe-area-inset-top)}
-header{padding:12px 16px 6px;display:flex;align-items:baseline;gap:10px}
-header h1{margin:0;font-size:19px;font-weight:900;letter-spacing:-.04em}
+.topinner{max-width:640px;margin:0 auto;padding:8px 14px 10px}
+header{display:flex;align-items:baseline;gap:9px;padding:0 2px 8px}
+header h1{margin:0;font-size:17px;font-weight:900;letter-spacing:-.04em;line-height:1}
 header h1 em{font-style:normal;color:var(--red)}
-header span{font-size:10px;letter-spacing:.22em;color:var(--dim);text-transform:uppercase;
+header span{font-size:9px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.stage{padding:8px 16px 2px;display:flex;justify-content:center}
-.frame{position:relative;width:100%;max-width:190px;aspect-ratio:9/16;background:#000;
-  border:1px solid var(--line);overflow:hidden}
+.preview{display:block}
+.stage{display:flex;justify-content:center}
+.frame{position:relative;width:auto;height:min(46vh,360px);aspect-ratio:9/16;background:#000;
+  border:1px solid var(--line);overflow:hidden;cursor:pointer;margin:0 auto}
+.frame.tappable::after{content:"＋ 사진 추가";position:absolute;inset:0;display:flex;
+  align-items:center;justify-content:center;color:var(--dim);font-size:13px;font-weight:600;
+  pointer-events:none}
 canvas#cv{width:100%;height:100%;display:block}
-.badge{position:absolute;left:8px;top:8px;font-family:ui-monospace,monospace;font-size:9px;
-  letter-spacing:.14em;color:#fff;background:rgba(228,50,43,.9);padding:3px 6px;display:none}
+.badge{position:absolute;left:6px;top:6px;font-family:ui-monospace,monospace;font-size:8px;
+  letter-spacing:.1em;color:#fff;background:rgba(228,50,43,.9);padding:2px 5px;display:none}
 .badge.on{display:block}
-.bar{display:flex;gap:8px;padding:12px 16px 4px;max-width:640px;margin:0 auto}
-.bar button{flex:1}
+.topbtns{display:flex;gap:8px;margin-top:9px}
+.topbtns button{flex:1;padding:11px 10px;font-size:13px}
+/* collapsed state: shrink to a compact row when scrolled */
+#topbar.mini header{display:none}
+#topbar.mini .preview{display:flex;gap:12px;align-items:center}
+#topbar.mini .frame{height:64px}
+#topbar.mini .stage{flex:0 0 auto;display:block}
+#topbar.mini .topbtns{margin-top:0;flex:1}
+#topbar.mini .topinner{padding:6px 14px}
 main{max-width:640px;margin:0 auto;padding:8px 16px 40px}
 section{border-top:1px solid var(--line);padding:18px 0 14px}
 section.hide{display:none}
@@ -83,21 +95,23 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 <body>
 
 <div id="topbar">
-  <header>
-    <h1>CUT<em>OUT</em></h1>
-    <span id="mode">halftone · 9:16</span>
-  </header>
-
-  <div class="stage">
-    <div class="frame">
-      <canvas id="cv"></canvas>
-      <div class="badge" id="recbadge">● REC</div>
+  <div class="topinner">
+    <header>
+      <h1>CUT<em>OUT</em></h1>
+      <span id="mode">halftone · 9:16</span>
+    </header>
+    <div class="preview">
+      <div class="stage">
+        <div class="frame" id="frame">
+          <canvas id="cv"></canvas>
+          <div class="badge" id="recbadge">● REC</div>
+        </div>
+      </div>
+      <div class="topbtns">
+        <button id="play" class="ghost">일시정지</button>
+        <button id="rec" class="primary">영상 만들기</button>
+      </div>
     </div>
-  </div>
-
-  <div class="bar">
-    <button id="play" class="ghost">일시정지</button>
-    <button id="rec" class="primary">영상 만들기</button>
   </div>
 </div>
 
@@ -123,16 +137,23 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 
 <section>
   <h2>사진</h2>
-  <button id="add" style="width:100%">사진 추가 (최대 8장)</button>
   <input id="file" type="file" accept="image/*" multiple hidden>
   <div class="thumbs" id="thumbs"></div>
-  <p class="empty" id="emptymsg">사진을 넣으면 바로 미리보기가 돌아갑니다. 인물이나 주제가 가운데 있는 사진이 잘 나옵니다.</p>
+  <button id="add" class="ghost small" style="width:100%;margin-top:8px">사진 더 추가</button>
+  <p class="empty" id="emptymsg">위 미리보기 화면을 눌러 사진을 넣어 보세요. 인물이나 주제가 가운데 있는 사진이 잘 나옵니다.</p>
 </section>
 
 <section>
   <h2>텍스트</h2>
   <label class="f">한 줄에 하나씩 — 컷이 바뀔 때마다 순서대로 나옵니다</label>
   <textarea id="text" placeholder="여름의 끝&#10;아무도 없는&#10;그 골목"></textarea>
+  <label class="f" style="margin-top:12px">글자 스타일</label>
+  <div class="chips" id="texttype">
+    <button class="chip" data-v="ransom">랜섬노트</button>
+    <button class="chip" data-v="crayon">크레용</button>
+    <button class="chip" data-v="dot">망점</button>
+    <button class="chip" data-v="chalk">분필</button>
+  </div>
   <div class="row" style="margin-top:12px">
     <div class="k">글자 크기</div><input type="range" id="tsize" min="40" max="130" step="1"><div class="v" id="tsizev"></div>
   </div>
@@ -142,11 +163,23 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 </section>
 
 <section>
-  <h2>리듬</h2>
-  <div class="row"><div class="k">BPM</div><input type="range" id="bpm" min="60" max="180" step="2"><div class="v" id="bpmv"></div></div>
+  <h2>리듬 · 움직임</h2>
+  <label class="f">움직임 스타일</label>
+  <div class="chips" id="motion">
+    <button class="chip" data-v="bounce">바운스</button>
+    <button class="chip" data-v="sway">스웨이</button>
+    <button class="chip" data-v="drift">드리프트</button>
+    <button class="chip" data-v="shake">셰이크</button>
+    <button class="chip" data-v="pulse">펄스</button>
+    <button class="chip" data-v="kick">킥</button>
+  </div>
+  <div class="row" style="margin-top:14px"><div class="k">BPM</div><input type="range" id="bpm" min="60" max="180" step="2"><div class="v" id="bpmv"></div></div>
   <div class="row"><div class="k">길이</div><input type="range" id="dur" min="4" max="20" step="1"><div class="v" id="durv"></div></div>
-  <div class="row"><div class="k">흔들림</div><input type="range" id="shake" min="0" max="200" step="5"><div class="v" id="shakev"></div></div>
+  <div class="row"><div class="k">움직임 세기</div><input type="range" id="shake" min="0" max="200" step="5"><div class="v" id="shakev"></div></div>
   <div class="row" id="rowcuts"><div class="k">조각 수</div><input type="range" id="cuts" min="1" max="4" step="1"><div class="v" id="cutsv"></div></div>
+  <div class="row" id="rowtorn"><div class="k">찢김 거칠기</div><input type="range" id="tornedge" min="0" max="100" step="5"><div class="v" id="tornedgev"></div></div>
+  <div class="row" id="rowdecor"><div class="k">크레용 낙서</div><input type="range" id="decor" min="0" max="100" step="5"><div class="v" id="decorv"></div></div>
+  <div class="row" id="rowdecorb"><div class="k">낙서 떨림</div><input type="range" id="decorboil" min="0" max="16" step="1"><div class="v" id="decorboilv"></div></div>
 </section>
 
 <section id="sec-mixed">
@@ -211,12 +244,13 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 const W=720,H=1280;
 const cv=document.getElementById('cv');cv.width=W;cv.height=H;
 const ctx=cv.getContext('2d',{alpha:false});
-const KEY='re_cutout_v3',TPKEY='re_cutout_tpl_v3';
+const KEY='re_cutout_v4',TPKEY='re_cutout_tpl_v4';
 const ACCENTS=['#e4322b','#1f3f8f','#f2c53d','#3fb27f','#efece4'];
 
 let S={style:'cutout',bpm:124,dur:8,tone:'mono',accent:ACCENTS[0],half:8,grain:35,cuts:2,shake:100,
   text:'',tsize:100,tpos:42,frame:'mix',weave:60,pastel:60,boil:9,print:55,hand:50,
-  accent2:ACCENTS[2],ngrade:85,nray:75,ndoodle:60,nboil:7};
+  accent2:ACCENTS[2],ngrade:85,nray:75,ndoodle:60,nboil:7,
+  motion:'bounce',texttype:'ransom',tornedge:70,decor:60,decorboil:6};
 
 let photos=[],shots=[],playing=true,recording=false,frameN=0;
 let audioEl=null,audioSrc=null,audioCtx=null,audioDest=null,aoff=0;
@@ -305,6 +339,7 @@ function prep(){
     p.half=makeHalf(p.base,S.half);
     p.avg=avgColor(p.base);
     p.duo=null;p.duoKey=null;p.sil=null;
+    if(p.vseed==null)p.vseed=(Math.random()*1e9)|0;
   });
   textCache={};buildShots();
 }
@@ -328,7 +363,10 @@ function renderThumbs(){
     t.appendChild(d);
   });
   document.getElementById('emptymsg').style.display=photos.length?'none':'block';
-  document.getElementById('add').textContent=photos.length>=8?'가득 참 (8장)':'사진 추가 (최대 8장)';
+  const addBtn=document.getElementById('add');
+  addBtn.textContent=photos.length>=8?'가득 참 (8장)':'사진 더 추가';
+  addBtn.style.display=photos.length?'inline-flex':'none';
+  document.getElementById('frame').classList.toggle('tappable',!photos.length);
 }
 
 /* ── timeline ── */
@@ -350,31 +388,89 @@ function shotAt(t){for(let i=0;i<shots.length;i++){const s=shots[i];
 
 /* ── text ── */
 let textCache={};
+const RANSOM_BG=['#e4322b','#1f3f8f','#f2c53d','#3fb27f','#efece4','#16181c','#d94f8f'];
 function getText(txt,mode,col){
   if(!txt)return null;
   const k=txt+'|'+S.tsize+'|'+S.tpos+'|'+mode+'|'+col;
   if(textCache[k])return textCache[k];
   const c=document.createElement('canvas');c.width=W;c.height=H;
   const x=c.getContext('2d');
+  const cy=H*(S.tpos/100);
+
+  if(mode==='ransom'){
+    // each character on its own tilted colored paper chip
+    const rr=rng(hashStr(txt)+S.tsize);
+    let size=clamp(W*(S.tsize/100)/Math.max(txt.length,1)*1.6,44,190);
+    x.font='900 '+size+'px Pretendard, sans-serif';
+    const chars=[...txt];
+    const widths=chars.map(ch=>ch===' '?size*.4:x.measureText(ch).width+size*.28);
+    const total=widths.reduce((a,b)=>a+b,0);
+    let cx=(W-total)/2;
+    for(let i=0;i<chars.length;i++){
+      const cw=widths[i],ch=chars[i];
+      if(ch!==' '){
+        const bx=cx,by=cy-size*.62,bw=cw-size*.06,bh=size*1.24;
+        const rot=(rr()-.5)*.34,dy=(rr()-.5)*size*.28;
+        x.save();
+        x.translate(bx+bw/2,by+bh/2+dy);x.rotate(rot);
+        // paper chip
+        x.shadowColor='rgba(0,0,0,.4)';x.shadowBlur=8;x.shadowOffsetY=3;
+        x.fillStyle=RANSOM_BG[(rr()*RANSOM_BG.length)|0];
+        x.fillRect(-bw/2,-bh/2,bw,bh);
+        x.shadowColor='transparent';
+        // letter — contrast to chip
+        const lum=1; // just alternate dark/light
+        x.fillStyle=rr()<.5?'#111':'#fff';
+        x.font='900 '+size+'px Pretendard, sans-serif';
+        x.textAlign='center';x.textBaseline='middle';
+        x.fillText(ch,0,size*.04);
+        x.restore();
+      }
+      cx+=cw;
+    }
+    textCache[k]=c;return c;
+  }
+
+  if(mode==='crayon'){
+    // hand-drawn wobbling letters via stroked path jitter (not straight scratch)
+    let size=300;x.font='900 '+size+'px Pretendard, sans-serif';
+    const w0=x.measureText(txt).width||1;
+    size=clamp(size*(W*(S.tsize/100)*1.05)/w0,40,460);
+    x.font='900 '+size+'px Pretendard, sans-serif';
+    x.textAlign='center';x.textBaseline='middle';
+    // draw text thick, then rough it up with multiple offset passes + grain punch-out
+    const rr=rng(hashStr(txt));
+    for(let p=0;p<3;p++){
+      x.globalAlpha=.5;
+      x.fillStyle=col||'#f0ece2';
+      x.save();x.translate((rr()-.5)*5,(rr()-.5)*5+ (p-1)*2);
+      x.fillText(txt,W/2,cy);x.restore();
+    }
+    x.globalAlpha=1;
+    x.globalCompositeOperation='destination-out';
+    x.globalAlpha=1;x.fillStyle=x.createPattern(grains[1],'repeat');x.fillRect(0,0,W,H);
+    x.globalAlpha=.4;x.fillStyle=x.createPattern(dotTile(4,1),'repeat');x.fillRect(0,0,W,H);
+    textCache[k]=c;return c;
+  }
+
+  // default: dot / chalk (solid letters punched with texture)
   let size=300;x.font='900 '+size+'px Pretendard, sans-serif';
   const w=x.measureText(txt).width||1;
   size=clamp(size*(W*(S.tsize/100)*1.1)/w,40,520);
   x.font='900 '+size+'px Pretendard, sans-serif';
   x.textAlign='center';x.textBaseline='middle';
   x.fillStyle=col||'#fff';
-  x.fillText(txt,W/2,H*(S.tpos/100));
+  x.fillText(txt,W/2,cy);
   x.globalCompositeOperation='destination-out';
   if(mode==='chalk'){
-    x.globalAlpha=1;
-    x.fillStyle=x.createPattern(grains[0],'repeat');x.fillRect(0,0,W,H);
-    x.globalAlpha=.32;
-    x.fillStyle=x.createPattern(dotTile(5,1),'repeat');x.fillRect(0,0,W,H);
+    x.globalAlpha=1;x.fillStyle=x.createPattern(grains[0],'repeat');x.fillRect(0,0,W,H);
+    x.globalAlpha=.32;x.fillStyle=x.createPattern(dotTile(5,1),'repeat');x.fillRect(0,0,W,H);
   }else{
-    x.globalAlpha=.5;
-    x.fillStyle=x.createPattern(dotTile(7,1),'repeat');x.fillRect(0,0,W,H);
+    x.globalAlpha=.5;x.fillStyle=x.createPattern(dotTile(7,1),'repeat');x.fillRect(0,0,W,H);
   }
   textCache[k]=c;return c;
 }
+function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
 
 /* ── shared overlays ── */
 function grainPass(a){
@@ -403,6 +499,164 @@ function placeholder(){
   ctx.fillText('사진을 넣어 주세요',W/2,H/2);
 }
 
+/* ── motion presets: return {sx,sy,rot,zoom,punch} for time t ── */
+function motionAt(t,seed){
+  const beat=60/S.bpm,bp=(t/beat)%1,amt=S.shake/100;
+  const bIdx=Math.floor(t/beat),rb=rng(bIdx*7919+seed);
+  const M=S.motion;
+  let punch=0,sx=0,sy=0,rot=0,zoom=1;
+  if(M==='bounce'){
+    punch=Math.pow(1-bp,4);
+    sx=(rb()-.5)*30*amt*punch;sy=(rb()-.5)*30*amt*punch;
+    zoom=1+punch*.05*amt;
+  }else if(M==='sway'){
+    punch=Math.pow(1-bp,3)*.5;
+    sx=Math.sin(t*1.6)*22*amt;sy=Math.cos(t*1.1)*14*amt;
+    rot=Math.sin(t*.9)*.03*amt;zoom=1+.03*amt*Math.sin(t*.7);
+  }else if(M==='drift'){
+    const d=(t*0.06)%1;
+    sx=(d-.5)*40*amt;sy=Math.sin(t*.5)*10*amt;
+    zoom=1.02+.05*amt*((t*0.04)%1);punch=Math.pow(1-bp,5)*.3;
+  }else if(M==='shake'){
+    const j=rng((Math.floor(t*22))>>>0);
+    sx=(j()-.5)*26*amt;sy=(j()-.5)*26*amt;rot=(j()-.5)*.04*amt;
+    punch=Math.pow(1-bp,4)*.6;zoom=1+punch*.03;
+  }else if(M==='pulse'){
+    punch=Math.pow(1-bp,6);
+    zoom=1+punch*.12*amt;
+  }else if(M==='kick'){
+    punch=Math.pow(1-bp,3);
+    const dir=rb()<.5?-1:1;
+    sy=-punch*38*amt*dir;rot=punch*.05*amt*dir;zoom=1+punch*.04*amt;
+  }
+  return {sx,sy,rot,zoom,punch,bp,bIdx};
+}
+
+/* torn-paper edge: irregular polygon with fibrous notches, drawn with a white paper backing */
+function tornPath(r,cx,cy,rx,ry,n,rough){
+  const pts=[];
+  for(let i=0;i<n;i++){
+    const a=i/n*6.2832;
+    let rr=.78+r()*.32;
+    if(r()<.30)rr*=.55+r()*.25;            // deep tears
+    const wob=1+(r()-.5)*rough*.5;
+    pts.push([cx+Math.cos(a)*rx*rr*wob,cy+Math.sin(a)*ry*rr*wob]);
+  }
+  // subdivide edges with tiny jagged fibers
+  const out=[];
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i],b=pts[(i+1)%pts.length];
+    out.push(a);
+    const segs=2+((r()*3)|0);
+    for(let s=1;s<segs;s++){
+      const u=s/segs;
+      const mx=a[0]+(b[0]-a[0])*u,my=a[1]+(b[1]-a[1])*u;
+      const nx=-(b[1]-a[1]),ny=(b[0]-a[0]);
+      const nl=Math.hypot(nx,ny)||1;
+      const off=(r()-.5)*rough*14;
+      out.push([mx+nx/nl*off,my+ny/nl*off]);
+    }
+  }
+  return out;
+}
+function polyPath(p){ctx.beginPath();for(let i=0;i<p.length;i++){
+  if(i)ctx.lineTo(p[i][0],p[i][1]);else ctx.moveTo(p[i][0],p[i][1]);}ctx.closePath();}
+
+/* crayon-textured freeform stroke reused across engines */
+function crayonStroke(pts,col,width,r,alpha){
+  ctx.fillStyle=col;
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i],b=pts[i+1];
+    const dist=Math.hypot(b[0]-a[0],b[1]-a[1]),steps=Math.max(2,Math.round(dist/3));
+    const nx=-(b[1]-a[1])/(dist||1),ny=(b[0]-a[0])/(dist||1);
+    for(let s=0;s<=steps;s++){
+      const u=s/steps,x=a[0]+(b[0]-a[0])*u,y=a[1]+(b[1]-a[1])*u;
+      const dabs=1+((r()*3)|0);
+      for(let k=0;k<dabs;k++){
+        const off=(r()-.5)*width*1.3;
+        ctx.globalAlpha=alpha*(.3+r()*.6);
+        const w=width*(.12+r()*.2);
+        ctx.beginPath();
+        ctx.ellipse(x+nx*off+(r()-.5)*2.5,y+ny*off+(r()-.5)*2.5,w,w*.6,
+          Math.atan2(b[1]-a[1],b[0]-a[0]),0,6.2832);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.globalAlpha=1;
+}
+
+/* a library of hand-drawn crayon objects */
+function objStar(cx,cy,rad,col,r){
+  const pts=[],spikes=5;
+  for(let i=0;i<spikes*2;i++){
+    const a=i/(spikes*2)*6.2832-1.57;
+    const rr=(i%2?rad*.42:rad)*(.85+r()*.3);
+    pts.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);
+  }
+  pts.push(pts[0]);
+  crayonStroke(pts,col,rad*.16,r,.9);
+}
+function objQuestion(cx,cy,rad,col,r){
+  const pts=[];
+  for(let i=0;i<=10;i++){const a=-2.4+i/10*4.0;
+    pts.push([cx+Math.cos(a)*rad*.6,cy-rad*.4+Math.sin(a)*rad*.6]);}
+  pts.push([cx+rad*.05,cy+rad*.1]);pts.push([cx+rad*.02,cy+rad*.42]);
+  crayonStroke(pts,col,rad*.2,r,.9);
+  crayonStroke([[cx,cy+rad*.72],[cx+2,cy+rad*.78]],col,rad*.26,r,.9);
+}
+function objFlower(cx,cy,rad,col,r){
+  for(let p=0;p<5;p++){
+    const a=p/5*6.2832,px=cx+Math.cos(a)*rad*.55,py=cy+Math.sin(a)*rad*.55;
+    const pts=[];for(let i=0;i<=8;i++){const aa=i/8*6.2832;
+      pts.push([px+Math.cos(aa)*rad*.34,py+Math.sin(aa)*rad*.34]);}
+    crayonStroke(pts,col,rad*.1,r,.85);
+  }
+}
+function objSquiggle(cx,cy,rad,col,r){
+  const pts=[],n=14,dir=r()<.5?1:-1;
+  for(let i=0;i<=n;i++){const u=i/n;
+    pts.push([cx-rad+u*rad*2, cy+Math.sin(u*9+r()*3)*rad*.4*dir]);}
+  crayonStroke(pts,col,rad*.14,r,.9);
+}
+function objSpike(cx,cy,rad,col,r){
+  // barbed line like the reference tail
+  const pts=[],n=16;
+  for(let i=0;i<=n;i++){const u=i/n;
+    pts.push([cx-rad+u*rad*2,cy+Math.sin(u*4)*rad*.3]);}
+  crayonStroke(pts,col,rad*.1,r,.85);
+  for(let i=2;i<n;i+=3){const b=pts[i];
+    crayonStroke([[b[0],b[1]],[b[0]+ (r()-.5)*rad*.3,b[1]-rad*.28]],col,rad*.08,r,.85);}
+}
+function objHeart(cx,cy,rad,col,r){
+  const pts=[];for(let i=0;i<=18;i++){const a=i/18*6.2832;
+    const x=16*Math.pow(Math.sin(a),3);
+    const y=13*Math.cos(a)-5*Math.cos(2*a)-2*Math.cos(3*a)-Math.cos(4*a);
+    pts.push([cx+x/16*rad,cy-y/16*rad]);}
+  crayonStroke(pts,col,rad*.14,r,.85);
+}
+const OBJ_FNS=[objStar,objQuestion,objFlower,objSquiggle,objSpike,objHeart];
+
+function drawDecor(shot,t){
+  if(S.decor<=0)return;
+  const amount=S.decor/100;
+  const step=S.decorboil>0?Math.floor(t*S.decorboil):0;
+  const base=rng(shot.seed*17+3);
+  const jit=rng((shot.seed*17+3+step*90001)>>>0);
+  const pal=[S.accent,S.accent2,S.accent2,'#f2ede1'];
+  const count=Math.round(2+amount*7);
+  ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
+  for(let i=0;i<count;i++){
+    const fn=OBJ_FNS[(base()*OBJ_FNS.length)|0];
+    const cx=W*(.1+base()*.8)+(jit()-.5)*10;
+    const cy=H*(.1+base()*.8)+(jit()-.5)*10;
+    const rad=W*(.04+base()*.09);
+    const col=pal[(base()*pal.length)|0];
+    fn(cx,cy,rad,col,jit);
+  }
+  ctx.restore();
+}
+
 /* ── engine A : halftone cutout ── */
 function jagged(r,rx,ry,n){
   const p=[];
@@ -417,54 +671,79 @@ function jagged(r,rx,ry,n){
 function path(p){ctx.beginPath();for(let i=0;i<p.length;i++){
   if(i)ctx.lineTo(p[i][0],p[i][1]);else ctx.moveTo(p[i][0],p[i][1]);}ctx.closePath();}
 
-function drawCut(ph,shot,k,lt,punch,sx,sy){
-  const r=rng(shot.seed+k*131);
-  const cx=W*(.22+r()*.56),cy=H*(.26+r()*.44);
-  const rad=W*(.30+r()*.20)*(k===0?1.2:.82);
-  const rot=(r()-.5)*.20,dir=r()<.5?-1:1;
-  const drift=(lt-.5)*W*.07*dir,sc=1+punch*.06*(S.shake/100);
-  const zoom=1.35+r()*.6,ox=(r()-.5)*W*.28,oy=(r()-.5)*H*.22;
-  const pts=jagged(rng(shot.seed+k*977),rad,rad*1.22,13);
+function drawCut(ph,shot,k,lt,mo){
+  // per-photo + per-slot variety: shape, size, tilt, framing all differ
+  const r=rng((shot.seed+k*131+ph.vseed)>>>0);
+  const cx=W*(.20+r()*.60),cy=H*(.24+r()*.48);
+  const rad=W*(.26+r()*.24)*(k===0?1.18:.74+r()*.3);
+  const ry=rad*(.9+r()*.5);                 // non-uniform aspect per cut
+  const rot=(r()-.5)*.28;
+  const dir=r()<.5?-1:1,drift=(lt-.5)*W*.06*dir;
+  const sc=1+mo.punch*.06*(S.shake/100);
+  const zoom=1.3+r()*.7,ox=(r()-.5)*W*.3,oy=(r()-.5)*H*.24;
+  const rough=S.tornedge/100;
+  const nverts=9+((r()*7)|0);
+  const pts=tornPath(rng((shot.seed+k*977+ph.vseed)>>>0),0,0,rad,ry,nverts,rough);
+
   ctx.save();
-  ctx.translate(cx+sx+drift,cy+sy);ctx.rotate(rot);ctx.scale(sc,sc);
-  path(pts);ctx.save();ctx.clip();
+  ctx.translate(cx+mo.sx+drift,cy+mo.sy);ctx.rotate(rot+mo.rot*.5);ctx.scale(sc,sc);
+
+  // drop shadow so the scrap sits above the layer below
+  ctx.save();ctx.shadowColor='rgba(0,0,0,.5)';ctx.shadowBlur=18;ctx.shadowOffsetY=7;
+  ctx.fillStyle='#efeae0';polyPath(pts);ctx.fill();ctx.restore();
+
+  // white paper backing (the torn edge shows this behind the photo)
+  const edge=W*(.012+rough*.016);
+  ctx.fillStyle='#f4f1e8';polyPath(pts);ctx.fill();
+
+  // photo, inset so a ragged white rim remains
+  ctx.save();
+  const inner=pts.map(p=>[p[0]*(1-edge/rad),p[1]*(1-edge/ry)]);
+  polyPath(inner);ctx.clip();
   ctx.drawImage(ph.base,-W*zoom/2+ox,-H*zoom/2+oy,W*zoom,H*zoom);
-  if(punch>.3){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=.20*punch;
-    ctx.drawImage(ph.base,-W*zoom/2+ox+11*punch,-H*zoom/2+oy,W*zoom,H*zoom);
+  if(mo.punch>.3){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=.18*mo.punch;
+    ctx.drawImage(ph.base,-W*zoom/2+ox+11*mo.punch,-H*zoom/2+oy,W*zoom,H*zoom);
     ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;}
   ctx.restore();
-  ctx.lineWidth=1.4;ctx.strokeStyle='rgba(255,255,255,.32)';ctx.stroke();
+
+  // fibrous torn rim shading
+  ctx.lineWidth=1.2;ctx.strokeStyle='rgba(150,140,120,.5)';polyPath(inner);ctx.stroke();
   ctx.restore();
 }
 
 function drawCutout(t){
-  const beat=60/S.bpm,shot=shotAt(t),lt=clamp((t-shot.start)/shot.len,0,1);
-  const bIdx=Math.floor(t/beat),bp=(t/beat)%1,punch=Math.pow(1-bp,4);
-  const rb=rng(bIdx*7919+11),amt=S.shake/100;
-  const sx=(rb()-.5)*30*amt*punch,sy=(rb()-.5)*30*amt*punch;
+  const shot=shotAt(t),lt=clamp((t-shot.start)/shot.len,0,1);
+  const mo=motionAt(t,11),amt=S.shake/100;
 
-  ctx.fillStyle='#050505';ctx.fillRect(0,0,W,H);
-  const bg=photos[shot.bi%photos.length],z=1.07+lt*.09+punch*.025*amt;
-  ctx.save();ctx.translate(W/2+sx*.45,H/2+sy*.45);ctx.scale(z,z);
-  ctx.rotate((rb()-.5)*.012*amt);ctx.globalAlpha=.95;
+  ctx.fillStyle='#0b0b0c';ctx.fillRect(0,0,W,H);
+  const bg=photos[shot.bi%photos.length],z=(1.05+lt*.08)*mo.zoom;
+  ctx.save();ctx.translate(W/2+mo.sx*.4,H/2+mo.sy*.4);ctx.scale(z,z);
+  ctx.rotate(mo.rot*.3);ctx.globalAlpha=.95;
   ctx.drawImage(bg.half,-W/2,-H/2);ctx.restore();
 
-  const tc=getText(shot.text,'dot','#fff');
-  if(tc){const tz=1+punch*.025*amt;
-    ctx.save();ctx.globalAlpha=.93;
-    ctx.translate(W/2+sx*1.5,H/2+sy*1.5);ctx.scale(tz,tz);ctx.translate(-W/2,-H/2);
+  // torn photo scraps (varied per photo)
+  for(let k=0;k<S.cuts;k++)drawCut(photos[(shot.pi+k)%photos.length],shot,k,lt,mo);
+
+  // ransom / cut-out typography on top of the scraps
+  const tc=getText(shot.text,S.texttype,shot.idx%2?S.accent2:S.accent);
+  if(tc){const tz=1+mo.punch*.02*amt;
+    ctx.save();ctx.globalAlpha=.97;
+    ctx.translate(W/2+mo.sx*1.4,H/2+mo.sy*1.4);ctx.scale(tz,tz);ctx.translate(-W/2,-H/2);
     ctx.drawImage(tc,0,0);ctx.restore();}
 
-  for(let k=0;k<S.cuts;k++)drawCut(photos[(shot.pi+k)%photos.length],shot,k,lt,punch,sx,sy);
+  drawDecor(shot,t);
 
   if(!dotPat)dotPat=ctx.createPattern(dotTile(6,.9),'repeat');
-  ctx.save();ctx.globalCompositeOperation='overlay';ctx.globalAlpha=.11;
+  ctx.save();ctx.globalCompositeOperation='overlay';ctx.globalAlpha=.10;
   ctx.fillStyle=dotPat;ctx.fillRect(0,0,W,H);ctx.restore();
+  if(!weavePat)weavePat=ctx.createPattern(weaveTile(),'repeat');
+  ctx.save();ctx.globalCompositeOperation='overlay';ctx.globalAlpha=.22;
+  ctx.fillStyle=weavePat;ctx.fillRect(0,0,W,H);ctx.restore();
   grainPass(S.grain/100*.55);
   vignette(false);
 
-  if(bIdx%4===0&&bp<.07){ctx.save();ctx.globalCompositeOperation='screen';
-    ctx.globalAlpha=.16*(1-bp/.07);ctx.fillStyle=S.accent;ctx.fillRect(0,0,W,H);ctx.restore();}
+  if(mo.bIdx%4===0&&mo.bp<.07){ctx.save();ctx.globalCompositeOperation='screen';
+    ctx.globalAlpha=.14*(1-mo.bp/.07);ctx.fillStyle=S.accent;ctx.fillRect(0,0,W,H);ctx.restore();}
 }
 
 /* ── engine B : mixed media ── */
@@ -896,6 +1175,9 @@ reg2('ngrade','ngrade',v=>v+'%',()=>{});
 reg2('nray','nray',v=>v+'%');
 reg2('ndoodle','ndoodle',v=>v+'%');
 reg2('nboil','nboil',v=>v?v+'fps':'멈춤');
+reg2('tornedge','tornedge',v=>v+'%');
+reg2('decor','decor',v=>v+'%');
+reg2('decorboil','decorboil',v=>v?v+'fps':'멈춤');
 
 const ta=document.getElementById('text');
 ta.addEventListener('input',function(){S.text=ta.value;textCache={};buildShots();persist();});
@@ -909,6 +1191,8 @@ function chipGroup(id,key,after){
 const syncStyle=chipGroup('style','style',function(){buildShots();applyStyleUI();});
 const syncTone=chipGroup('tone','tone',function(){prep();});
 const syncFrame=chipGroup('frame','frame');
+const syncMotion=chipGroup('motion','motion');
+const syncTexttype=chipGroup('texttype','texttype',function(){textCache={};});
 
 function applyStyleUI(){
   const mixed=S.style==='mixed',neon=S.style==='neon',cutout=S.style==='cutout';
@@ -916,12 +1200,15 @@ function applyStyleUI(){
   document.getElementById('sec-neon').classList.toggle('hide',!neon);
   document.getElementById('rowcuts').style.display=cutout?'flex':'none';
   document.getElementById('rowhalf').style.display=cutout?'flex':'none';
+  document.getElementById('rowtorn').style.display=cutout?'flex':'none';
+  document.getElementById('rowdecor').style.display=cutout?'flex':'none';
+  document.getElementById('rowdecorb').style.display=cutout?'flex':'none';
   const label=mixed?'mixed media':neon?'neon scribble':'halftone';
   document.getElementById('mode').textContent=label+' · 9:16';
   document.getElementById('stylehint').textContent=mixed
     ?'캔버스 천에 인쇄한 질감 위로 오일파스텔 획이 얹히고, 획은 프레임마다 다시 그려집니다. 컷이 길고 느리게 넘어갑니다.'
     :neon?'사진이 두 컬러 듀오톤으로 물들고, 굵은 마커 윤곽선과 방사형 크레용 획, 손낙서 고리가 컷마다 새로 배치됩니다.'
-    :'사진이 각진 조각으로 찢겨 하프톤 배경 위에 얹히고, 비트마다 흔들립니다.';
+    :'사진이 종이처럼 찢겨(흰 속살이 보이는 가장자리) 콜라주로 얹히고, 크레용 낙서와 오려붙인 글자가 함께 배치됩니다. 사진마다 다른 모양으로 찢깁니다.';
   textCache={};
 }
 
@@ -943,6 +1230,9 @@ function syncAcc2(){accWrap2.querySelectorAll('.sw').forEach(b=>b.classList.togg
 
 document.getElementById('add').onclick=()=>document.getElementById('file').click();
 document.getElementById('file').onchange=function(e){addFiles(e.target.files);e.target.value='';};
+document.getElementById('frame').onclick=function(){
+  if(!photos.length&&!recording)document.getElementById('file').click();
+};
 document.getElementById('addaudio').onclick=()=>document.getElementById('afile').click();
 document.getElementById('afile').onchange=function(e){
   const f=e.target.files[0];if(!f)return;
@@ -966,6 +1256,7 @@ document.getElementById('share').onclick=shareFile;
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 function syncAll(){
   ta.value=S.text;syncStyle();syncTone();syncFrame();syncAcc();syncAcc2();
+  syncMotion();syncTexttype();
   rangeEls.forEach(el=>el._sync());applyStyleUI();
 }
 function restore(){
@@ -1003,6 +1294,22 @@ fitTopbar();
 window.addEventListener('resize',fitTopbar);
 window.addEventListener('orientationchange',()=>setTimeout(fitTopbar,200));
 setTimeout(fitTopbar,300);
+
+/* collapse the preview to a compact row once the user scrolls down */
+const topbar=document.getElementById('topbar');
+let miniState=false;
+function onScroll(){
+  const want=window.scrollY>90;
+  if(want!==miniState){miniState=want;topbar.classList.toggle('mini',want);
+    requestAnimationFrame(fitTopbar);}
+}
+window.addEventListener('scroll',onScroll,{passive:true});
+/* tap the mini preview to jump back to top and expand */
+topbar.addEventListener('click',function(e){
+  if(miniState&&photos.length&&!e.target.closest('button')){
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+});
 </script>
 </body>
 </html>
