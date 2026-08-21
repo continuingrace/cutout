@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>CUTOUT — 콜라주 모션</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&family=Gaegu:wght@700&family=Nanum+Pen+Script&family=Do+Hyeon&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#0a0a0b;--paper:#ecebe7;--dim:#8b8b90;--line:#26262a;--panel:#141416;--red:#e4322b}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -15,9 +18,13 @@ html,body{margin:0;padding:0;background:var(--ink);color:var(--paper);
   font-family:Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
 body{padding-bottom:env(safe-area-inset-bottom)}
-#topbar{position:fixed;top:0;left:0;right:0;z-index:30;background:rgba(10,10,11,.98);
-  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
-  padding-top:env(safe-area-inset-top)}
+#topbar{position:fixed;top:0;left:0;right:0;z-index:30;background:#0a0a0b;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+  padding-top:env(safe-area-inset-top);
+  -webkit-transform:translateZ(0);transform:translateZ(0);will-change:transform}
+/* html/body must not create a scroll container that traps position:fixed */
+html{-webkit-text-size-adjust:100%}
 .topinner{max-width:640px;margin:0 auto;padding:8px 14px 10px}
 header{display:flex;align-items:baseline;gap:9px;padding:0 2px 8px}
 header h1{margin:0;font-size:17px;font-weight:900;letter-spacing:-.04em;line-height:1}
@@ -61,6 +68,12 @@ button[disabled]{opacity:.4}
 .thumb img{width:100%;height:100%;object-fit:cover;filter:grayscale(1) contrast(1.15)}
 .thumb b{position:absolute;right:0;top:0;width:20px;height:20px;background:rgba(0,0,0,.75);color:#fff;
   font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.thumb i.ord{position:absolute;left:3px;top:2px;font-style:normal;font-size:10px;font-weight:700;
+  color:#fff;background:rgba(0,0,0,.7);min-width:15px;height:15px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;padding:0 3px}
+.thumb u.mv{position:absolute;bottom:0;width:50%;height:22px;background:rgba(0,0,0,.72);color:#fff;
+  text-decoration:none;font-size:15px;line-height:22px;text-align:center;cursor:pointer}
+.thumb u.mv.l{left:0}.thumb u.mv.r{right:0}
 .empty{color:var(--dim);font-size:13px;line-height:1.6;margin:10px 0 0}
 textarea,input[type=text],select{width:100%;background:var(--panel);color:var(--paper);
   border:1px solid var(--line);border-radius:2px;padding:11px 12px;font-family:inherit;font-size:14px}
@@ -147,12 +160,22 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   <h2>텍스트</h2>
   <label class="f">한 줄에 하나씩 — 컷이 바뀔 때마다 순서대로 나옵니다</label>
   <textarea id="text" placeholder="여름의 끝&#10;아무도 없는&#10;그 골목"></textarea>
+  <button id="addline" class="ghost small" style="width:100%;margin-top:8px">＋ 텍스트 줄 추가</button>
   <label class="f" style="margin-top:12px">글자 스타일</label>
   <div class="chips" id="texttype">
     <button class="chip" data-v="ransom">랜섬노트</button>
     <button class="chip" data-v="crayon">크레용</button>
     <button class="chip" data-v="dot">망점</button>
     <button class="chip" data-v="chalk">분필</button>
+  </div>
+  <label class="f" style="margin-top:12px">서체</label>
+  <div class="chips" id="font">
+    <button class="chip" data-v="pretendard">기본</button>
+    <button class="chip" data-v="blackhan">블랙한산스</button>
+    <button class="chip" data-v="jua">주아</button>
+    <button class="chip" data-v="dohyeon">도현</button>
+    <button class="chip" data-v="gaegu">개구</button>
+    <button class="chip" data-v="nanumpen">손글씨펜</button>
   </div>
   <div class="row" style="margin-top:12px">
     <div class="k">글자 크기</div><input type="range" id="tsize" min="40" max="130" step="1"><div class="v" id="tsizev"></div>
@@ -250,7 +273,17 @@ const ACCENTS=['#e4322b','#1f3f8f','#f2c53d','#3fb27f','#efece4'];
 let S={style:'cutout',bpm:124,dur:8,tone:'mono',accent:ACCENTS[0],half:8,grain:35,cuts:2,shake:100,
   text:'',tsize:100,tpos:42,frame:'mix',weave:60,pastel:60,boil:9,print:55,hand:50,
   accent2:ACCENTS[2],ngrade:85,nray:75,ndoodle:60,nboil:7,
-  motion:'bounce',texttype:'ransom',tornedge:70,decor:60,decorboil:6};
+  motion:'bounce',texttype:'ransom',tornedge:70,decor:60,decorboil:6,font:'pretendard'};
+
+const FONT_STACK={
+  pretendard:'900 $px Pretendard, sans-serif',
+  blackhan:"400 $px 'Black Han Sans', sans-serif",
+  jua:"400 $px 'Jua', sans-serif",
+  dohyeon:"400 $px 'Do Hyeon', sans-serif",
+  gaegu:"700 $px 'Gaegu', cursive",
+  nanumpen:"400 $px 'Nanum Pen Script', cursive"
+};
+function fontFor(px){return (FONT_STACK[S.font]||FONT_STACK.pretendard).replace('$',px);}
 
 let photos=[],shots=[],playing=true,recording=false,frameN=0;
 let audioEl=null,audioSrc=null,audioCtx=null,audioDest=null,aoff=0;
@@ -354,12 +387,23 @@ function addFiles(files){
     img.src=URL.createObjectURL(f);
   });
 }
+function movePhoto(i,dir){
+  const j=i+dir;
+  if(j<0||j>=photos.length)return;
+  const tmp=photos[i];photos[i]=photos[j];photos[j]=tmp;
+  buildShots();renderThumbs();
+}
 function renderThumbs(){
   const t=document.getElementById('thumbs');t.innerHTML='';
   photos.forEach((p,i)=>{
     const d=document.createElement('div');d.className='thumb';
-    d.innerHTML='<img src="'+p.url+'"><b>×</b>';
-    d.querySelector('b').onclick=()=>{photos.splice(i,1);prep();renderThumbs();};
+    d.innerHTML='<img src="'+p.url+'"><b class="del">×</b>'+
+      '<i class="ord">'+(i+1)+'</i>'+
+      '<u class="mv l"'+(i===0?' style="opacity:.25"':'')+'>‹</u>'+
+      '<u class="mv r"'+(i===photos.length-1?' style="opacity:.25"':'')+'>›</u>';
+    d.querySelector('.del').onclick=()=>{photos.splice(i,1);prep();renderThumbs();};
+    d.querySelector('.mv.l').onclick=()=>movePhoto(i,-1);
+    d.querySelector('.mv.r').onclick=()=>movePhoto(i,1);
     t.appendChild(d);
   });
   document.getElementById('emptymsg').style.display=photos.length?'none':'block';
@@ -401,7 +445,7 @@ function getText(txt,mode,col){
     // each character on its own tilted colored paper chip
     const rr=rng(hashStr(txt)+S.tsize);
     let size=clamp(W*(S.tsize/100)/Math.max(txt.length,1)*1.6,44,190);
-    x.font='900 '+size+'px Pretendard, sans-serif';
+    x.font=fontFor(size);
     const chars=[...txt];
     const widths=chars.map(ch=>ch===' '?size*.4:x.measureText(ch).width+size*.28);
     const total=widths.reduce((a,b)=>a+b,0);
@@ -421,7 +465,7 @@ function getText(txt,mode,col){
         // letter — contrast to chip
         const lum=1; // just alternate dark/light
         x.fillStyle=rr()<.5?'#111':'#fff';
-        x.font='900 '+size+'px Pretendard, sans-serif';
+        x.font=fontFor(size);
         x.textAlign='center';x.textBaseline='middle';
         x.fillText(ch,0,size*.04);
         x.restore();
@@ -433,10 +477,10 @@ function getText(txt,mode,col){
 
   if(mode==='crayon'){
     // hand-drawn wobbling letters via stroked path jitter (not straight scratch)
-    let size=300;x.font='900 '+size+'px Pretendard, sans-serif';
+    let size=300;x.font=fontFor(size);
     const w0=x.measureText(txt).width||1;
     size=clamp(size*(W*(S.tsize/100)*1.05)/w0,40,460);
-    x.font='900 '+size+'px Pretendard, sans-serif';
+    x.font=fontFor(size);
     x.textAlign='center';x.textBaseline='middle';
     // draw text thick, then rough it up with multiple offset passes + grain punch-out
     const rr=rng(hashStr(txt));
@@ -454,10 +498,10 @@ function getText(txt,mode,col){
   }
 
   // default: dot / chalk (solid letters punched with texture)
-  let size=300;x.font='900 '+size+'px Pretendard, sans-serif';
+  let size=300;x.font=fontFor(size);
   const w=x.measureText(txt).width||1;
   size=clamp(size*(W*(S.tsize/100)*1.1)/w,40,520);
-  x.font='900 '+size+'px Pretendard, sans-serif';
+  x.font=fontFor(size);
   x.textAlign='center';x.textBaseline='middle';
   x.fillStyle=col||'#fff';
   x.fillText(txt,W/2,cy);
@@ -534,27 +578,35 @@ function motionAt(t,seed){
 
 /* torn-paper edge: irregular polygon with fibrous notches, drawn with a white paper backing */
 function tornPath(r,cx,cy,rx,ry,n,rough){
+  // coarse control points around the blob
   const pts=[];
   for(let i=0;i<n;i++){
     const a=i/n*6.2832;
-    let rr=.78+r()*.32;
-    if(r()<.30)rr*=.55+r()*.25;            // deep tears
-    const wob=1+(r()-.5)*rough*.5;
+    let rr=.80+r()*.28;
+    if(r()<.22)rr*=.60+r()*.22;            // occasional deep bite
+    const wob=1+(r()-.5)*rough*.4;
     pts.push([cx+Math.cos(a)*rx*rr*wob,cy+Math.sin(a)*ry*rr*wob]);
   }
-  // subdivide edges with tiny jagged fibers
+  // subdivide each edge into many small segments and jitter them along the
+  // edge normal at two scales — big ragged bays + tiny high-freq fibers.
+  // this reads as a hand-torn deckle edge rather than a clean scissor cut.
   const out=[];
   for(let i=0;i<pts.length;i++){
     const a=pts[i],b=pts[(i+1)%pts.length];
-    out.push(a);
-    const segs=2+((r()*3)|0);
-    for(let s=1;s<segs;s++){
+    const dist=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    const segs=Math.max(4,Math.round(dist/9)); // dense sampling
+    let nx=-(b[1]-a[1]),ny=(b[0]-a[0]);
+    const nl=Math.hypot(nx,ny)||1;nx/=nl;ny/=nl;
+    let carry=(r()-.5)*rough*10;              // low-freq wander, correlated
+    for(let s=0;s<segs;s++){
       const u=s/segs;
       const mx=a[0]+(b[0]-a[0])*u,my=a[1]+(b[1]-a[1])*u;
-      const nx=-(b[1]-a[1]),ny=(b[0]-a[0]);
-      const nl=Math.hypot(nx,ny)||1;
-      const off=(r()-.5)*rough*14;
-      out.push([mx+nx/nl*off,my+ny/nl*off]);
+      carry+= (r()-.5)*rough*7;               // random walk = smooth big tears
+      carry*=0.72;                            // pull back toward the edge
+      const fiber=(r()-.5)*rough*6;           // high-freq fiber flick
+      const spike=(r()<.14)?(r()-.5)*rough*22:0; // rare long fiber sticking out
+      const off=carry+fiber+spike;
+      out.push([mx+nx*off,my+ny*off]);
     }
   }
   return out;
@@ -637,6 +689,35 @@ function objHeart(cx,cy,rad,col,r){
 }
 const OBJ_FNS=[objStar,objQuestion,objFlower,objSquiggle,objSpike,objHeart];
 
+/* hand-scribbled crayon marks: underlines, loops, zigzags, circles, ticks —
+   the same crayon texture as the neon/mixed engines, no star/heart icons */
+function crayonMark(kind,cx,cy,rad,col,r){
+  const pts=[];
+  if(kind<.28){                 // wobbly underline / emphasis stroke
+    const n=10,tilt=(r()-.5)*.5;
+    for(let i=0;i<=n;i++){const u=i/n;
+      pts.push([cx-rad+u*rad*2, cy+Math.sin(u*3+r())*rad*.12+ (u-.5)*rad*2*tilt]);}
+    crayonStroke(pts,col,rad*.13,r,.9);
+  }else if(kind<.5){            // scribbled loop cluster (like a hasty circle)
+    const n=22,loops=1+((r()*2)|0);
+    for(let i=0;i<=n;i++){const a=i/n*6.2832*loops;
+      const rr=rad*(.55+.18*Math.sin(a*2+r()));
+      pts.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr*.86]);}
+    crayonStroke(pts,col,rad*.12,r,.85);
+  }else if(kind<.72){          // zigzag
+    const n=7;for(let i=0;i<=n;i++){
+      pts.push([cx-rad+i/n*rad*2, cy+(i%2?rad*.4:-rad*.4)+(r()-.5)*rad*.15]);}
+    crayonStroke(pts,col,rad*.12,r,.9);
+  }else if(kind<.88){          // small cross / tick
+    crayonStroke([[cx-rad*.5,cy-rad*.5],[cx+rad*.5,cy+rad*.5]],col,rad*.14,r,.9);
+    crayonStroke([[cx+rad*.5,cy-rad*.5],[cx-rad*.5,cy+rad*.5]],col,rad*.14,r,.9);
+  }else{                        // three quick dots
+    for(let d=0;d<3;d++){
+      const px=cx+(d-1)*rad*.6,py=cy+(r()-.5)*rad*.3;
+      crayonStroke([[px,py],[px+2,py+2]],col,rad*.3,r,.9);
+    }
+  }
+}
 function drawDecor(shot,t){
   if(S.decor<=0)return;
   const amount=S.decor/100;
@@ -644,15 +725,15 @@ function drawDecor(shot,t){
   const base=rng(shot.seed*17+3);
   const jit=rng((shot.seed*17+3+step*90001)>>>0);
   const pal=[S.accent,S.accent2,S.accent2,'#f2ede1'];
-  const count=Math.round(2+amount*7);
+  const count=Math.round(2+amount*6);
   ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
   for(let i=0;i<count;i++){
-    const fn=OBJ_FNS[(base()*OBJ_FNS.length)|0];
+    const kind=base();
     const cx=W*(.1+base()*.8)+(jit()-.5)*10;
     const cy=H*(.1+base()*.8)+(jit()-.5)*10;
-    const rad=W*(.04+base()*.09);
+    const rad=W*(.05+base()*.10);
     const col=pal[(base()*pal.length)|0];
-    fn(cx,cy,rad,col,jit);
+    crayonMark(kind,cx,cy,rad,col,jit);
   }
   ctx.restore();
 }
@@ -693,12 +774,30 @@ function drawCut(ph,shot,k,lt,mo){
   ctx.fillStyle='#efeae0';polyPath(pts);ctx.fill();ctx.restore();
 
   // white paper backing (the torn edge shows this behind the photo)
-  const edge=W*(.012+rough*.016);
+  const edge=W*(.02+rough*.03);            // wider ragged rim = more torn look
   ctx.fillStyle='#f4f1e8';polyPath(pts);ctx.fill();
 
-  // photo, inset so a ragged white rim remains
+  // paper fibre grain on the white backing so the rim isn't a flat color
+  ctx.save();polyPath(pts);ctx.clip();
+  if(!grainPats)grainPats=grains.map(g=>ctx.createPattern(g,'repeat'));
+  ctx.globalAlpha=.5;ctx.globalCompositeOperation='multiply';
+  ctx.fillStyle=grainPats[(ph.vseed+k)&3];
+  ctx.fillRect(-rad*2,-ry*2,rad*4,ry*4);
+  // faint warm shadow just inside the torn edge (thickness of the paper)
+  ctx.globalCompositeOperation='source-over';ctx.globalAlpha=.20;
+  ctx.lineWidth=edge*1.6;ctx.strokeStyle='rgba(120,105,80,.9)';polyPath(pts);ctx.stroke();
+  ctx.restore();
+
+  // photo, inset with an irregular rim: shrink each torn point toward the
+  // centroid by a jittered amount so the white edge itself stays ragged
+  const jr=rng((shot.seed+k*613+ph.vseed)>>>0);
+  const inner=pts.map(p=>{
+    const d=Math.hypot(p[0],p[1])||1;
+    const cut=edge*(.6+jr()*1.1);           // uneven inset per vertex
+    const f=Math.max(0,(d-cut)/d);
+    return [p[0]*f,p[1]*f];
+  });
   ctx.save();
-  const inner=pts.map(p=>[p[0]*(1-edge/rad),p[1]*(1-edge/ry)]);
   polyPath(inner);ctx.clip();
   ctx.drawImage(ph.base,-W*zoom/2+ox,-H*zoom/2+oy,W*zoom,H*zoom);
   if(mo.punch>.3){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=.18*mo.punch;
@@ -706,8 +805,8 @@ function drawCut(ph,shot,k,lt,mo){
     ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;}
   ctx.restore();
 
-  // fibrous torn rim shading
-  ctx.lineWidth=1.2;ctx.strokeStyle='rgba(150,140,120,.5)';polyPath(inner);ctx.stroke();
+  // soft torn rim shading between photo and paper
+  ctx.lineWidth=1.4;ctx.strokeStyle='rgba(150,140,120,.45)';polyPath(inner);ctx.stroke();
   ctx.restore();
 }
 
@@ -1181,6 +1280,11 @@ reg2('decorboil','decorboil',v=>v?v+'fps':'멈춤');
 
 const ta=document.getElementById('text');
 ta.addEventListener('input',function(){S.text=ta.value;textCache={};buildShots();persist();});
+document.getElementById('addline').onclick=function(){
+  ta.value=(ta.value.replace(/\s+$/,'')+'\n').replace(/^\n/,'');
+  S.text=ta.value;textCache={};buildShots();persist();
+  ta.focus();ta.scrollTop=ta.scrollHeight;
+};
 
 function chipGroup(id,key,after){
   const wrap=document.getElementById(id);
@@ -1193,6 +1297,7 @@ const syncTone=chipGroup('tone','tone',function(){prep();});
 const syncFrame=chipGroup('frame','frame');
 const syncMotion=chipGroup('motion','motion');
 const syncTexttype=chipGroup('texttype','texttype',function(){textCache={};});
+const syncFont=chipGroup('font','font',function(){textCache={};});
 
 function applyStyleUI(){
   const mixed=S.style==='mixed',neon=S.style==='neon',cutout=S.style==='cutout';
@@ -1256,7 +1361,7 @@ document.getElementById('share').onclick=shareFile;
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 function syncAll(){
   ta.value=S.text;syncStyle();syncTone();syncFrame();syncAcc();syncAcc2();
-  syncMotion();syncTexttype();
+  syncMotion();syncTexttype();syncFont();
   rangeEls.forEach(el=>el._sync());applyStyleUI();
 }
 function restore(){
@@ -1283,7 +1388,7 @@ document.getElementById('tpsave').onclick=function(){
 };
 
 restore();renderTpl();renderThumbs();placeholder();
-if(document.fonts&&document.fonts.load)document.fonts.load('900 100px Pretendard').then(function(){textCache={};});
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){textCache={};});
 
 /* keep main content clear of the fixed preview bar */
 function fitTopbar(){
@@ -1310,18 +1415,22 @@ topbar.addEventListener('click',function(e){
     window.scrollTo({top:0,behavior:'smooth'});
   }
 });
+
+/* ── auto-updating service worker: new commits show on next open, no reinstall ── */
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').then(function(reg){
     reg.addEventListener('updatefound',function(){
       const nw=reg.installing;
       nw&&nw.addEventListener('statechange',function(){
-        if(nw.state==='installed'&&navigator.serviceWorker.controller){nw.postMessage('skip');}
+        if(nw.state==='installed'&&navigator.serviceWorker.controller){
+          nw.postMessage('skip');           // activate new version immediately
+        }
       });
     });
   }).catch(function(){});
   let reloaded=false;
   navigator.serviceWorker.addEventListener('controllerchange',function(){
-    if(reloaded)return;reloaded=true;location.reload();
+    if(reloaded)return;reloaded=true;location.reload();   // swap in fresh files once
   });
 }
 </script>
