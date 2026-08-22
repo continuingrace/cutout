@@ -161,7 +161,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 <section>
   <h2>텍스트</h2>
   <label class="f">한 줄에 하나씩 — 컷이 바뀔 때마다 순서대로 나옵니다</label>
-  <textarea id="text" placeholder="여름의 끝&#10;아무도 없는&#10;그 골목"></textarea>
+  <textarea id="text" placeholder="텍스트를 입력하세요"></textarea>
   <button id="addline" class="ghost small" style="width:100%;margin-top:8px">＋ 텍스트 줄 추가</button>
   <label class="f" style="margin-top:12px">글자 스타일</label>
   <div class="chips" id="texttype">
@@ -425,9 +425,20 @@ let grainPats=null,dotPat=null,printPat=null,weavePat=null,paperPat=null,vig=nul
 /* ── photos ── */
 function prep(){
   photos.forEach(p=>{
-    if(!p.base){p.base=document.createElement('canvas');p.base.width=W;p.base.height=H;}
-    p.base.getContext('2d').clearRect(0,0,W,H);
-    coverDraw(p.base,p.img);applyTone(p.base,S.tone);
+    if(!p.base||p.base.width!==W||p.base.height!==H){
+      if(!p.base)p.base=document.createElement('canvas');
+      p.base.width=W;p.base.height=H;
+    }
+    const bx=p.base.getContext('2d');
+    bx.clearRect(0,0,W,H);
+    // fill letterbox with the photo's average-ish dark so edges aren't pure black
+    bx.fillStyle='#0d0d0f';bx.fillRect(0,0,W,H);
+    // CONTAIN: keep original aspect, never stretch or crop
+    const s=Math.min(W/p.img.width,H/p.img.height);
+    const w=p.img.width*s,h=p.img.height*s;
+    bx.drawImage(p.img,(W-w)/2,(H-h)/2,w,h);
+    p.fit={x:(W-w)/2,y:(H-h)/2,w:w,h:h};   // remember photo rect within base
+    applyTone(p.base,S.tone);
     p.half=makeHalf(p.base,S.half);
     p.avg=avgColor(p.base);
     p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};
@@ -436,7 +447,7 @@ function prep(){
   textCache={};buildShots();
 }
 function addFiles(files){
-  const list=[].slice.call(files,0,8-photos.length);
+  const list=[].slice.call(files);
   let left=list.length;if(!left)return;
   list.forEach(f=>{
     const img=new Image();
@@ -467,7 +478,7 @@ function renderThumbs(){
   });
   document.getElementById('emptymsg').style.display=photos.length?'none':'block';
   const addBtn=document.getElementById('add');
-  addBtn.textContent=photos.length>=8?'가득 참 (8장)':'사진 더 추가';
+  addBtn.textContent='사진 더 추가';
   addBtn.style.display=photos.length?'inline-flex':'none';
   document.getElementById('frame').classList.toggle('tappable',!photos.length);
 }
@@ -760,49 +771,121 @@ const OBJ_FNS=[objStar,objQuestion,objFlower,objSquiggle,objSpike,objHeart];
 
 /* hand-scribbled crayon marks: underlines, loops, zigzags, circles, ticks —
    the same crayon texture as the neon/mixed engines, no star/heart icons */
-function crayonFillStar(cx,cy,rad,col,r){
-  // build 5-point star path, fill with slightly jittery crayon layers
+function pencilShadeStar(cx,cy,rad,col,r){
+  // a paper cut-out star, shaded with directional colored-pencil strokes.
   const pts=[],sp=5;
   for(let i=0;i<sp*2;i++){const a=i/(sp*2)*6.2832-1.57;
-    const rr=(i%2?rad*.42:rad)*(.9+r()*.14);
+    const rr=(i%2?rad*.44:rad)*(.92+r()*.12);
     pts.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);}
   ctx.save();
-  for(let pass=0;pass<3;pass++){
+  // 1) white paper backing with a soft drop shadow → looks cut & placed
+  ctx.save();ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=10;ctx.shadowOffsetY=4;
+  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});
+  ctx.closePath();ctx.fillStyle='#f6f2e9';ctx.fill();ctx.restore();
+  // 2) clip to the star and lay colored-pencil hatching inside
+  ctx.save();
+  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});
+  ctx.closePath();ctx.clip();
+  // base wash
+  ctx.globalAlpha=.5;ctx.fillStyle=col;ctx.fillRect(cx-rad,cy-rad,rad*2,rad*2);
+  // directional pencil strokes (hatching) with pressure variation
+  const ang=r()*3.14, dx=Math.cos(ang),dy=Math.sin(ang);
+  const nx=-dy,ny=dx;
+  ctx.lineCap='round';
+  for(let i=-rad*1.4;i<rad*1.4;i+=2.1){
+    const px=cx+nx*i, py=cy+ny*i;
+    ctx.globalAlpha=.10+r()*.30;                 // pressure变化
+    ctx.strokeStyle=col;ctx.lineWidth=.8+r()*1.6;
     ctx.beginPath();
-    pts.forEach((p,i)=>{i?ctx.lineTo(p[0]+(r()-.5)*3,p[1]+(r()-.5)*3):ctx.moveTo(p[0],p[1]);});
-    ctx.closePath();
-    ctx.globalAlpha=.32;ctx.fillStyle=col;ctx.fill();
+    ctx.moveTo(px-dx*rad*1.2+(r()-.5)*3, py-dy*rad*1.2+(r()-.5)*3);
+    ctx.lineTo(px+dx*rad*1.2+(r()-.5)*3, py+dy*rad*1.2+(r()-.5)*3);
+    ctx.stroke();
   }
-  // grain over the fill for crayon tooth
-  ctx.clip();ctx.globalAlpha=.3;ctx.globalCompositeOperation='overlay';
+  // cross-hatch pass, lighter
+  for(let i=-rad*1.4;i<rad*1.4;i+=3.0){
+    const px=cx+dx*i, py=cy+dy*i;
+    ctx.globalAlpha=.06+r()*.18;
+    ctx.strokeStyle=col;ctx.lineWidth=.7+r()*1.2;
+    ctx.beginPath();
+    ctx.moveTo(px-nx*rad*1.2, py-ny*rad*1.2);
+    ctx.lineTo(px+nx*rad*1.2, py+ny*rad*1.2);
+    ctx.stroke();
+  }
+  // paper tooth
+  ctx.globalAlpha=.25;ctx.globalCompositeOperation='overlay';
   ctx.fillStyle=ctx.createPattern(grains[(r()*4)|0],'repeat');
   ctx.fillRect(cx-rad,cy-rad,rad*2,rad*2);
   ctx.restore();
-  // outline
-  ctx.save();ctx.globalAlpha=.9;
-  const op=pts.concat([pts[0]]);
-  crayonStroke(op,col,rad*.1,r,.9);ctx.restore();
+  // 3) torn/cut white rim: a slightly jittered pale outline
+  ctx.save();ctx.globalAlpha=.9;ctx.strokeStyle='#f6f2e9';
+  ctx.lineWidth=rad*.06;ctx.lineJoin='round';
+  ctx.beginPath();pts.forEach((p,i)=>{const jx=(r()-.5)*2,jy=(r()-.5)*2;
+    i?ctx.lineTo(p[0]+jx,p[1]+jy):ctx.moveTo(p[0]+jx,p[1]+jy);});
+  ctx.closePath();ctx.stroke();ctx.restore();
+  ctx.restore();
+}
+/* charcoal-pencil doodle: pressure-varied black line (horns, tail, arrows,
+   spirals) like the hand-drawn marks in the reference clips */
+function charcoalStroke(pts,r,baseW){
+  ctx.save();ctx.strokeStyle='#141414';ctx.lineCap='round';ctx.lineJoin='round';
+  // multiple slightly offset passes with varying pressure = charcoal weight
+  for(let pass=0;pass<3;pass++){
+    ctx.globalAlpha=pass===0?.85:.35;
+    ctx.beginPath();
+    for(let i=0;i<pts.length;i++){
+      const p=pts[i],jx=(r()-.5)*1.6,jy=(r()-.5)*1.6;
+      i?ctx.lineTo(p[0]+jx,p[1]+jy):ctx.moveTo(p[0]+jx,p[1]+jy);
+    }
+    // pressure taper via lineWidth per pass
+    ctx.lineWidth=baseW*(1-pass*0.28)*(0.7+r()*0.6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function charcoalMark(kind,cx,cy,rad,r){
+  const w=rad*.12;
+  if(kind<.3){                       // little devil horns
+    charcoalStroke([[cx-rad*.5,cy+rad*.4],[cx-rad*.7,cy-rad*.5],[cx-rad*.3,cy-rad*.1]],r,w);
+    charcoalStroke([[cx+rad*.5,cy+rad*.4],[cx+rad*.7,cy-rad*.5],[cx+rad*.3,cy-rad*.1]],r,w);
+  }else if(kind<.55){                // wavy arrow / tail with spade tip
+    const pts=[];const n=14;
+    for(let i=0;i<=n;i++){const u=i/n;
+      pts.push([cx-rad+u*rad*2, cy+Math.sin(u*7)*rad*.4]);}
+    charcoalStroke(pts,r,w);
+    const e=pts[pts.length-1];
+    charcoalStroke([[e[0]-rad*.2,e[1]-rad*.2],[e[0],e[1]],[e[0]-rad*.2,e[1]+rad*.2]],r,w);
+  }else if(kind<.78){                // spiral scribble
+    const pts=[];const turns=2+((r()*2)|0);
+    for(let i=0;i<=40;i++){const u=i/40,a=u*6.2832*turns,rr=rad*u;
+      pts.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);}
+    charcoalStroke(pts,r,w*.9);
+  }else{                             // lightning / zigzag bolt
+    charcoalStroke([[cx-rad*.4,cy-rad],[cx+rad*.2,cy-rad*.1],
+      [cx-rad*.1,cy+rad*.1],[cx+rad*.4,cy+rad]],r,w);
+  }
 }
 function crayonMark(kind,cx,cy,rad,col,r){
   const pts=[];
-  if(kind<.22){                 // filled crayon star (reference look)
-    crayonFillStar(cx,cy,rad,col,r);
-  }else if(kind<.42){           // wobbly underline / emphasis stroke
+  if(kind<.18){                 // colored-pencil paper cut-out star
+    pencilShadeStar(cx,cy,rad,col,r);
+  }else if(kind<.34){           // charcoal doodle (black pressure线)
+    charcoalMark(r(),cx,cy,rad,r);
+  }else if(kind<.5){            // wobbly underline / emphasis stroke
     const n=10,tilt=(r()-.5)*.5;
     for(let i=0;i<=n;i++){const u=i/n;
       pts.push([cx-rad+u*rad*2, cy+Math.sin(u*3+r())*rad*.12+ (u-.5)*rad*2*tilt]);}
     crayonStroke(pts,col,rad*.13,r,.9);
-  }else if(kind<.58){            // scribbled loop cluster (like a hasty circle)
+  }else if(kind<.64){            // scribbled loop cluster (like a hasty circle)
     const n=22,loops=1+((r()*2)|0);
     for(let i=0;i<=n;i++){const a=i/n*6.2832*loops;
       const rr=rad*(.55+.18*Math.sin(a*2+r()));
       pts.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr*.86]);}
     crayonStroke(pts,col,rad*.12,r,.85);
-  }else if(kind<.74){          // zigzag
+  }else if(kind<.78){          // zigzag
     const n=7;for(let i=0;i<=n;i++){
       pts.push([cx-rad+i/n*rad*2, cy+(i%2?rad*.4:-rad*.4)+(r()-.5)*rad*.15]);}
     crayonStroke(pts,col,rad*.12,r,.9);
-  }else if(kind<.88){          // small cross / tick
+  }else if(kind<.9){          // small cross / tick
     crayonStroke([[cx-rad*.5,cy-rad*.5],[cx+rad*.5,cy+rad*.5]],col,rad*.14,r,.9);
     crayonStroke([[cx+rad*.5,cy-rad*.5],[cx-rad*.5,cy+rad*.5]],col,rad*.14,r,.9);
   }else{                        // three quick dots
