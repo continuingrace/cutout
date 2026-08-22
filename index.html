@@ -439,6 +439,16 @@ function prep(){
     bx.drawImage(p.img,(W-w)/2,(H-h)/2,w,h);
     p.fit={x:(W-w)/2,y:(H-h)/2,w:w,h:h};   // remember photo rect within base
     applyTone(p.base,S.tone);
+    // COVER version (fills frame, keeps aspect, crops) — used only by neon so
+    // the duotone/silhouette never shows empty letterbox gaps.
+    if(!p.baseCover)p.baseCover=document.createElement('canvas');
+    p.baseCover.width=W;p.baseCover.height=H;
+    const cxx=p.baseCover.getContext('2d');
+    cxx.clearRect(0,0,W,H);
+    const cs=Math.max(W/p.img.width,H/p.img.height);
+    const cw=p.img.width*cs,chh=p.img.height*cs;
+    cxx.drawImage(p.img,(W-cw)/2,(H-chh)/2,cw,chh);
+    applyTone(p.baseCover,S.tone);
     p.half=makeHalf(p.base,S.half);
     p.avg=avgColor(p.base);
     p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};
@@ -772,73 +782,98 @@ const OBJ_FNS=[objStar,objQuestion,objFlower,objSquiggle,objSpike,objHeart];
 /* hand-scribbled crayon marks: underlines, loops, zigzags, circles, ticks —
    the same crayon texture as the neon/mixed engines, no star/heart icons */
 function pencilShadeStar(cx,cy,rad,col,r){
-  // a paper cut-out star, shaded with directional colored-pencil strokes.
-  const pts=[],sp=5;
-  for(let i=0;i<sp*2;i++){const a=i/(sp*2)*6.2832-1.57;
-    const rr=(i%2?rad*.44:rad)*(.92+r()*.12);
-    pts.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);}
+  // a hand-cut paper star, shaded with directional colored-pencil strokes.
+  // build an irregular star: jittered radius/angle + subdivided wavy edges.
+  const tips=[],sp=5;
+  for(let i=0;i<sp*2;i++){
+    const a=i/(sp*2)*6.2832-1.57 + (r()-.5)*.18;      // angle wobble
+    const rr=(i%2?rad*(.40+r()*.10):rad*(.90+r()*.16));// radius wobble
+    tips.push([cx+Math.cos(a)*rr,cy+Math.sin(a)*rr]);
+  }
+  // subdivide each edge with small wandering points → hand-cut wavy edge
+  const pts=[];
+  for(let i=0;i<tips.length;i++){
+    const a=tips[i],b=tips[(i+1)%tips.length];
+    const segs=3+((r()*2)|0);
+    const nx=-(b[1]-a[1]),ny=(b[0]-a[0]);const nl=Math.hypot(nx,ny)||1;
+    for(let s=0;s<segs;s++){
+      const u=s/segs;
+      const off=(r()-.5)*rad*.05;                       // edge waviness
+      pts.push([a[0]+(b[0]-a[0])*u+nx/nl*off, a[1]+(b[1]-a[1])*u+ny/nl*off]);
+    }
+  }
+  const trace=()=>{ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});ctx.closePath();};
   ctx.save();
-  // 1) white paper backing with a soft drop shadow → looks cut & placed
-  ctx.save();ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=10;ctx.shadowOffsetY=4;
-  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});
-  ctx.closePath();ctx.fillStyle='#f6f2e9';ctx.fill();ctx.restore();
-  // 2) clip to the star and lay colored-pencil hatching inside
-  ctx.save();
-  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);});
-  ctx.closePath();ctx.clip();
-  // base wash
-  ctx.globalAlpha=.5;ctx.fillStyle=col;ctx.fillRect(cx-rad,cy-rad,rad*2,rad*2);
-  // directional pencil strokes (hatching) with pressure variation
-  const ang=r()*3.14, dx=Math.cos(ang),dy=Math.sin(ang);
-  const nx=-dy,ny=dx;
+  // 1) white paper backing with soft shadow → cut & placed
+  ctx.save();ctx.shadowColor='rgba(0,0,0,.32)';ctx.shadowBlur=10;ctx.shadowOffsetY=4;
+  trace();ctx.fillStyle='#f6f2e9';ctx.fill();ctx.restore();
+  // 2) colored-pencil hatching inside
+  ctx.save();trace();ctx.clip();
+  ctx.globalAlpha=.45;ctx.fillStyle=col;ctx.fillRect(cx-rad,cy-rad,rad*2,rad*2);
+  const ang=r()*3.14, dx=Math.cos(ang),dy=Math.sin(ang),nx=-dy,ny=dx;
   ctx.lineCap='round';
   for(let i=-rad*1.4;i<rad*1.4;i+=2.1){
     const px=cx+nx*i, py=cy+ny*i;
-    ctx.globalAlpha=.10+r()*.30;                 // pressure变化
-    ctx.strokeStyle=col;ctx.lineWidth=.8+r()*1.6;
+    ctx.globalAlpha=.10+r()*.28;ctx.strokeStyle=col;ctx.lineWidth=.8+r()*1.5;
     ctx.beginPath();
     ctx.moveTo(px-dx*rad*1.2+(r()-.5)*3, py-dy*rad*1.2+(r()-.5)*3);
     ctx.lineTo(px+dx*rad*1.2+(r()-.5)*3, py+dy*rad*1.2+(r()-.5)*3);
     ctx.stroke();
   }
-  // cross-hatch pass, lighter
   for(let i=-rad*1.4;i<rad*1.4;i+=3.0){
     const px=cx+dx*i, py=cy+dy*i;
-    ctx.globalAlpha=.06+r()*.18;
-    ctx.strokeStyle=col;ctx.lineWidth=.7+r()*1.2;
-    ctx.beginPath();
-    ctx.moveTo(px-nx*rad*1.2, py-ny*rad*1.2);
-    ctx.lineTo(px+nx*rad*1.2, py+ny*rad*1.2);
-    ctx.stroke();
+    ctx.globalAlpha=.05+r()*.16;ctx.strokeStyle=col;ctx.lineWidth=.7+r()*1.1;
+    ctx.beginPath();ctx.moveTo(px-nx*rad*1.2, py-ny*rad*1.2);
+    ctx.lineTo(px+nx*rad*1.2, py+ny*rad*1.2);ctx.stroke();
   }
-  // paper tooth
-  ctx.globalAlpha=.25;ctx.globalCompositeOperation='overlay';
+  ctx.globalAlpha=.22;ctx.globalCompositeOperation='overlay';
   ctx.fillStyle=ctx.createPattern(grains[(r()*4)|0],'repeat');
   ctx.fillRect(cx-rad,cy-rad,rad*2,rad*2);
   ctx.restore();
-  // 3) torn/cut white rim: a slightly jittered pale outline
-  ctx.save();ctx.globalAlpha=.9;ctx.strokeStyle='#f6f2e9';
-  ctx.lineWidth=rad*.06;ctx.lineJoin='round';
-  ctx.beginPath();pts.forEach((p,i)=>{const jx=(r()-.5)*2,jy=(r()-.5)*2;
-    i?ctx.lineTo(p[0]+jx,p[1]+jy):ctx.moveTo(p[0]+jx,p[1]+jy);});
-  ctx.closePath();ctx.stroke();ctx.restore();
+  // 3) soft pale cut rim (slightly uneven width)
+  ctx.save();ctx.globalAlpha=.85;ctx.strokeStyle='#f6f2e9';
+  ctx.lineWidth=rad*.05;ctx.lineJoin='round';trace();ctx.stroke();ctx.restore();
   ctx.restore();
 }
 /* charcoal-pencil doodle: pressure-varied black line (horns, tail, arrows,
    spirals) like the hand-drawn marks in the reference clips */
 function charcoalStroke(pts,r,baseW){
-  ctx.save();ctx.strokeStyle='#141414';ctx.lineCap='round';ctx.lineJoin='round';
-  // multiple slightly offset passes with varying pressure = charcoal weight
-  for(let pass=0;pass<3;pass++){
-    ctx.globalAlpha=pass===0?.85:.35;
-    ctx.beginPath();
-    for(let i=0;i<pts.length;i++){
-      const p=pts[i],jx=(r()-.5)*1.6,jy=(r()-.5)*1.6;
-      i?ctx.lineTo(p[0]+jx,p[1]+jy):ctx.moveTo(p[0]+jx,p[1]+jy);
+  ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  // 1) soft underlayer — slightly transparent, gives the smudgy body
+  ctx.globalAlpha=.5;ctx.strokeStyle='#1a1a1a';ctx.lineWidth=baseW*1.15;
+  ctx.beginPath();
+  for(let i=0;i<pts.length;i++){const p=pts[i];i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]);}
+  ctx.stroke();
+  // 2) grainy core: many short dabs along the path with jitter + pressure,
+  //    so the line has broken, toothy charcoal edges instead of a clean vector
+  ctx.fillStyle='#121212';
+  for(let i=0;i<pts.length-1;i++){
+    const a=pts[i],b=pts[i+1];
+    const dist=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    const steps=Math.max(2,(dist/2.2)|0);
+    const nx=-(b[1]-a[1])/(dist||1),ny=(b[0]-a[0])/(dist||1);
+    for(let s=0;s<=steps;s++){
+      const u=s/steps;
+      const x=a[0]+(b[0]-a[0])*u,y=a[1]+(b[1]-a[1])*u;
+      const dabs=2+((r()*3)|0);
+      for(let k=0;k<dabs;k++){
+        const off=(r()-.5)*baseW*1.5;            // spread across the width
+        const pr=Math.pow(r(),1.6);               // most dabs faint, few dark
+        ctx.globalAlpha=.2+pr*.7;
+        const rr=baseW*(.10+r()*.28);
+        ctx.beginPath();
+        ctx.ellipse(x+nx*off+(r()-.5)*1.5, y+ny*off+(r()-.5)*1.5,
+          rr, rr*(.5+r()*.5), Math.atan2(b[1]-a[1],b[0]-a[0]), 0, 6.2832);
+        ctx.fill();
+      }
     }
-    // pressure taper via lineWidth per pass
-    ctx.lineWidth=baseW*(1-pass*0.28)*(0.7+r()*0.6);
-    ctx.stroke();
+  }
+  // 3) a few stray specks around the line (charcoal dust)
+  for(let i=0;i<pts.length;i++){
+    if(r()<.6)continue;
+    const p=pts[i];
+    ctx.globalAlpha=.1+r()*.3;
+    ctx.beginPath();ctx.arc(p[0]+(r()-.5)*baseW*3,p[1]+(r()-.5)*baseW*3,baseW*(.08+r()*.14),0,6.2832);ctx.fill();
   }
   ctx.restore();
 }
@@ -1411,15 +1446,16 @@ function drawNeon(t){
   const sx=(rb()-.5)*16*amt*punch,sy=(rb()-.5)*16*amt*punch;
 
   const ph=photos[shot.pi%photos.length];
+  const nb=ph.baseCover||ph.base;
   const key=S.accent+'|'+S.accent2;
-  if(ph.duoKey!==key){ph.duo=makeDuo(ph.base,S.accent,S.accent2);ph.duoKey=key;}
-  if(!ph.sil)ph.sil=makeSil(ph.base);
+  if(ph.duoKey!==key){ph.duo=makeDuo(nb,S.accent,S.accent2);ph.duoKey=key;}
+  if(!ph.sil)ph.sil=makeSil(nb);
 
   ctx.fillStyle='#050506';ctx.fillRect(0,0,W,H);
   const z=1.05+lt*.08+punch*.02*amt;
   ctx.save();
   ctx.translate(W/2+sx,H/2+sy);ctx.scale(z,z);
-  ctx.drawImage(ph.base,-W/2,-H/2);
+  ctx.drawImage(nb,-W/2,-H/2);
   ctx.globalAlpha=S.ngrade/100;
   ctx.drawImage(ph.duo,-W/2,-H/2);
   ctx.globalAlpha=1;
@@ -1638,8 +1674,10 @@ ACCENTS.forEach(function(c){
 });
 function syncAcc(){accWrap.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',b.dataset.v===S.accent));}
 
+const NEON2=['#f2c53d','#efece4','#e4322b','#1f3f8f','#3fb27f',
+  '#ff5ec4','#00e5ff','#b26bff','#39ff88','#ff8a3d','#ffe14d','#ff3d6e','#4d7cff','#2ce8c8'];
 const accWrap2=document.getElementById('acc2');
-ACCENTS.forEach(function(c){
+NEON2.forEach(function(c){
   const b=document.createElement('button');b.className='sw';b.style.background=c;b.dataset.v=c;
   b.onclick=function(){S.accent2=c;syncAcc2();persist();};
   accWrap2.appendChild(b);
