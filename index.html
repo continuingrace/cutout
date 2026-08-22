@@ -1414,7 +1414,9 @@ function makeInkGrain(){
   for(let g=0;g<3;g++){
     const c=document.createElement('canvas');c.width=c.height=n;
     const x=c.getContext('2d');
-    // scatter small dark & light ink blots of varying size
+    // OPAQUE neutral gray base — under 'overlay' mid-gray = no change, and it
+    // guarantees the tile is never transparent (transparency = checkerboard).
+    x.fillStyle='#808080';x.fillRect(0,0,n,n);
     for(let i=0;i<1400;i++){
       const dark=Math.random()<.5;
       const r=Math.random()*1.8+0.3;
@@ -1426,8 +1428,8 @@ function makeInkGrain(){
     const s=document.createElement('canvas');s.width=s.height=n>>1;
     const sc=s.getContext('2d');sc.imageSmoothingEnabled=true;
     sc.drawImage(c,0,0,n>>1,n>>1);
-    x.clearRect(0,0,n,n);x.imageSmoothingEnabled=true;
-    x.drawImage(s,0,0,n,n);
+    x.imageSmoothingEnabled=true;
+    x.drawImage(s,0,0,n,n);      // no clearRect: base stays opaque
     tiles.push(c);
   }
   return tiles;
