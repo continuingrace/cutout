@@ -190,6 +190,9 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   <div class="row">
     <div class="k">세로 위치</div><input type="range" id="tpos" min="10" max="90" step="1"><div class="v" id="tposv"></div>
   </div>
+  <div class="row">
+    <div class="k">가로 위치</div><input type="range" id="tposx" min="10" max="90" step="1"><div class="v" id="tposxv"></div>
+  </div>
 </section>
 
 <section>
@@ -209,6 +212,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   <div class="row" id="rowcuts"><div class="k">조각 수</div><input type="range" id="cuts" min="1" max="4" step="1"><div class="v" id="cutsv"></div></div>
   <div class="row" id="rowtorn"><div class="k">찢김 거칠기</div><input type="range" id="tornedge" min="0" max="100" step="5"><div class="v" id="tornedgev"></div></div>
   <div class="row" id="rowdecor"><div class="k">크레용 낙서</div><input type="range" id="decor" min="0" max="100" step="5"><div class="v" id="decorv"></div></div>
+  <div class="row" id="rowdecorw"><div class="k">낙서 굵기</div><input type="range" id="decorw" min="30" max="250" step="10"><div class="v" id="decorwv"></div></div>
   <div class="row" id="rowdecorb"><div class="k">낙서 떨림</div><input type="range" id="decorboil" min="0" max="16" step="1"><div class="v" id="decorboilv"></div></div>
 </section>
 
@@ -286,9 +290,9 @@ const ACCENTS=['#e4322b','#1f3f8f','#f2c53d','#3fb27f','#efece4'];
 const AR={'9:16':[720,1280],'4:5':[864,1080],'16:9':[1280,720]};
 
 let S={style:'cutout',bpm:124,dur:8,tone:'mono',accent:ACCENTS[0],half:8,halftone:'soft',grain:35,cuts:2,shake:100,
-  text:'',tsize:100,tpos:42,frame:'mix',weave:60,paper:0,pastel:60,boil:9,print:55,hand:50,
+  text:'',tsize:100,tpos:42,tposx:50,frame:'mix',weave:60,paper:0,pastel:60,boil:9,print:55,hand:50,
   accent2:ACCENTS[2],ngrade:85,nray:75,ndoodle:60,nboil:7,
-  motion:'bounce',texttype:'ransom',tornedge:70,decor:60,decorboil:6,font:'pretendard',ar:'9:16',halfgap:100};
+  motion:'bounce',texttype:'ransom',tornedge:70,decor:60,decorboil:6,decorw:100,font:'pretendard',ar:'9:16',halfgap:100};
 
 function applyAspect(){
   const d=AR[S.ar]||AR['9:16'];W=d[0];H=d[1];
@@ -431,24 +435,14 @@ function prep(){
     }
     const bx=p.base.getContext('2d');
     bx.clearRect(0,0,W,H);
-    // fill letterbox with the photo's average-ish dark so edges aren't pure black
-    bx.fillStyle='#0d0d0f';bx.fillRect(0,0,W,H);
-    // CONTAIN: keep original aspect, never stretch or crop
-    const s=Math.min(W/p.img.width,H/p.img.height);
+    // COVER: keep original aspect, fill the whole canvas (may crop edges).
+    // no stretching — width & height scaled by the same factor.
+    const s=Math.max(W/p.img.width,H/p.img.height);
     const w=p.img.width*s,h=p.img.height*s;
     bx.drawImage(p.img,(W-w)/2,(H-h)/2,w,h);
-    p.fit={x:(W-w)/2,y:(H-h)/2,w:w,h:h};   // remember photo rect within base
+    p.fit={x:(W-w)/2,y:(H-h)/2,w:w,h:h};
     applyTone(p.base,S.tone);
-    // COVER version (fills frame, keeps aspect, crops) — used only by neon so
-    // the duotone/silhouette never shows empty letterbox gaps.
-    if(!p.baseCover)p.baseCover=document.createElement('canvas');
-    p.baseCover.width=W;p.baseCover.height=H;
-    const cxx=p.baseCover.getContext('2d');
-    cxx.clearRect(0,0,W,H);
-    const cs=Math.max(W/p.img.width,H/p.img.height);
-    const cw=p.img.width*cs,chh=p.img.height*cs;
-    cxx.drawImage(p.img,(W-cw)/2,(H-chh)/2,cw,chh);
-    applyTone(p.baseCover,S.tone);
+    p.baseCover=p.base;                 // neon shares the same cover base
     p.half=makeHalf(p.base,S.half);
     p.avg=avgColor(p.base);
     p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};
@@ -520,11 +514,12 @@ const RANSOM_BG=['#e4322b','#1f3f8f','#f2c53d','#3fb27f','#efece4','#16181c','#d
   '#e8a33d','#7b5cc4','#2fa8a0','#c94f3d','#f0e6d2','#3d5a3d','#d67ba8','#4a4a52','#e5d5b8'];
 function getText(txt,mode,col){
   if(!txt)return null;
-  const k=txt+'|'+S.tsize+'|'+S.tpos+'|'+mode+'|'+col;
+  const k=txt+'|'+S.tsize+'|'+S.tpos+'|'+S.tposx+'|'+mode+'|'+col+'|'+S.font;
   if(textCache[k])return textCache[k];
   const c=document.createElement('canvas');c.width=W;c.height=H;
   const x=c.getContext('2d');
   const cy=H*(S.tpos/100);
+  const cxT=W*(S.tposx/100);
 
   if(mode==='ransom'){
     // each character on its own tilted colored paper chip
@@ -534,7 +529,7 @@ function getText(txt,mode,col){
     const chars=[...txt];
     const widths=chars.map(ch=>ch===' '?size*.4:x.measureText(ch).width+size*.28);
     const total=widths.reduce((a,b)=>a+b,0);
-    let cx=(W-total)/2;
+    let cx=cxT-total/2;
     for(let i=0;i<chars.length;i++){
       const cw=widths[i],ch=chars[i];
       if(ch!==' '){
@@ -580,7 +575,7 @@ function getText(txt,mode,col){
       x.globalAlpha=.5;
       x.fillStyle=col||'#f0ece2';
       x.save();x.translate((rr()-.5)*5,(rr()-.5)*5+ (p-1)*2);
-      x.fillText(txt,W/2,cy);x.restore();
+      x.fillText(txt,cxT,cy);x.restore();
     }
     x.globalAlpha=1;
     x.globalCompositeOperation='destination-out';
@@ -596,7 +591,7 @@ function getText(txt,mode,col){
   x.font=fontFor(size);
   x.textAlign='center';x.textBaseline='middle';
   x.fillStyle=col||'#fff';
-  x.fillText(txt,W/2,cy);
+  x.fillText(txt,cxT,cy);
   x.globalCompositeOperation='destination-out';
   if(mode==='chalk'){
     x.globalAlpha=1;x.fillStyle=x.createPattern(grains[0],'repeat');x.fillRect(0,0,W,H);
@@ -705,7 +700,9 @@ function polyPath(p){ctx.beginPath();for(let i=0;i<p.length;i++){
   if(i)ctx.lineTo(p[i][0],p[i][1]);else ctx.moveTo(p[i][0],p[i][1]);}ctx.closePath();}
 
 /* crayon-textured freeform stroke reused across engines */
+let CRAYON_W=1;   // global crayon doodle width multiplier (set by drawDecor)
 function crayonStroke(pts,col,width,r,alpha){
+  width*=CRAYON_W;
   ctx.fillStyle=col;
   for(let i=0;i<pts.length-1;i++){
     const a=pts[i],b=pts[i+1];
@@ -939,6 +936,7 @@ function drawDecor(shot,t){
   const pal=[S.accent,S.accent2,'#f2ede1','#e8a33d','#7b5cc4','#2fa8a0','#d94f8f','#3fb27f'];
   const count=Math.round(2+amount*6);
   ctx.save();ctx.lineJoin='round';ctx.lineCap='round';
+  CRAYON_W=S.decorw/100;
   for(let i=0;i<count;i++){
     const kind=base();
     const cx=W*(.1+base()*.8)+(jit()-.5)*10;
@@ -947,6 +945,7 @@ function drawDecor(shot,t){
     const col=pal[(base()*pal.length)|0];
     crayonMark(kind,cx,cy,rad,col,jit);
   }
+  CRAYON_W=1;
   ctx.restore();
 }
 
@@ -1600,6 +1599,7 @@ function reg2(id,key,fmt,after){
 }
 reg2('tsize','tsize',v=>v+'%',()=>{textCache={};});
 reg2('tpos','tpos',v=>v+'%',()=>{textCache={};});
+reg2('tposx','tposx',v=>v+'%',()=>{textCache={};});
 reg2('bpm','bpm',v=>v,buildShots);
 reg2('dur','dur',v=>v+'s',buildShots);
 reg2('shake','shake',v=>v+'%');
@@ -1619,6 +1619,7 @@ reg2('ndoodle','ndoodle',v=>v+'%');
 reg2('nboil','nboil',v=>v?v+'fps':'멈춤');
 reg2('tornedge','tornedge',v=>v+'%');
 reg2('decor','decor',v=>v+'%');
+reg2('decorw','decorw',v=>v+'%');
 reg2('decorboil','decorboil',v=>v?v+'fps':'멈춤');
 
 const ta=document.getElementById('text');
@@ -1654,6 +1655,7 @@ function applyStyleUI(){
   document.getElementById('rowhalfgap').style.display=cutout?'flex':'none';
   document.getElementById('rowtorn').style.display=cutout?'flex':'none';
   document.getElementById('rowdecor').style.display=cutout?'flex':'none';
+  document.getElementById('rowdecorw').style.display=cutout?'flex':'none';
   document.getElementById('rowdecorb').style.display=cutout?'flex':'none';
   const label=all?'혼합':S.style==='mixed'?'mixed media':S.style==='neon'?'neon scribble':'halftone';
   document.getElementById('mode').textContent=label+' · 9:16';
