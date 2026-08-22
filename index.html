@@ -139,6 +139,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
     <button class="chip" data-v="cutout">하프톤 컷아웃</button>
     <button class="chip" data-v="mixed">믹스드 미디어</button>
     <button class="chip" data-v="neon">네온 스크리블</button>
+    <button class="chip" data-v="film">필름 프레스</button>
     <button class="chip" data-v="all">혼합 (컷마다)</button>
   </div>
   <p class="hint" id="stylehint"></p>
@@ -258,7 +259,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   </div>
   <div class="row" style="margin-top:14px" id="rowhalf"><div class="k">망점 크기</div><input type="range" id="half" min="4" max="16" step="1"><div class="v" id="halfv"></div></div>
   <div class="row" id="rowhalfgap"><div class="k">망점 간격</div><input type="range" id="halfgap" min="70" max="200" step="5"><div class="v" id="halfgapv"></div></div>
-  <div class="row"><div class="k">그레인</div><input type="range" id="grain" min="0" max="100" step="5"><div class="v" id="grainv"></div></div>
+  <div class="row" style="margin-top:14px"><div class="k">그레인</div><input type="range" id="grain" min="0" max="100" step="5"><div class="v" id="grainv"></div></div>
 </section>
 
 <section>
@@ -445,7 +446,7 @@ function prep(){
     p.baseCover=p.base;                 // neon shares the same cover base
     p.half=makeHalf(p.base,S.half);
     p.avg=avgColor(p.base);
-    p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};
+    p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};p.halo=null;p.filmKey=null;p.filmDuo=null;
     if(p.vseed==null)p.vseed=(Math.random()*1e9)|0;
   });
   textCache={};buildShots();
@@ -488,7 +489,7 @@ function renderThumbs(){
 }
 
 /* ── timeline ── */
-function mulFor(style){return style==='mixed'?[4,6]:style==='neon'?[2,3]:[1,2];}
+function mulFor(style){return style==='mixed'?[4,6]:style==='neon'?[2,3]:style==='film'?[3,5]:[1,2];}
 function buildShots(){
   shots=[];if(!photos.length)return;
   const beat=60/S.bpm,r=rng(1234),lines=S.text.split('\n').map(s=>s.trim());
@@ -496,7 +497,7 @@ function buildShots(){
   while(t<S.dur+.5){
     const seed=(r()*1e9)|0;
     // in 혼합 mode each cut has its own engine, so match its pacing
-    const style=(S.style==='all')?['cutout','mixed','neon'][(seed>>>4)%3]:S.style;
+    const style=(S.style==='all')?['cutout','mixed','neon','film'][(seed>>>4)%4]:S.style;
     const mul=mulFor(style);
     const len=beat*(r()<.5?mul[0]:mul[1]);
     shots.push({idx:i,start:t,len:len,seed:seed,pi:i%photos.length,
@@ -1327,6 +1328,37 @@ function makeDuo(base,colA,colB){
   }
   x.putImageData(out,0,0);return c;
 }
+
+/* Real halation: extract the bright areas, gaussian-blur them, tint warm, and
+   return a glow layer to be screen-composited over the frame. Built at low res
+   for speed, then upscaled — blur runs once per photo, not per frame. */
+function makeHalation(base,thresh,tintHex){
+  const dw=Math.max(2,W>>1),dh=Math.max(2,H>>1);         // half-res is plenty
+  // 1) pull the highlights on a small canvas
+  const hi=document.createElement('canvas');hi.width=dw;hi.height=dh;
+  const hx=hi.getContext('2d');
+  hx.drawImage(base,0,0,dw,dh);
+  const im=hx.getImageData(0,0,dw,dh),p=im.data;
+  const tint=hex2rgb(tintHex||'#ffd9a0');
+  const t=thresh*255;
+  for(let i=0;i<p.length;i+=4){
+    const l=.299*p[i]+.587*p[i+1]+.114*p[i+2];
+    if(l<=t){p[i+3]=0;continue;}
+    const k=Math.min(1,(l-t)/(255-t));               // how bright past threshold
+    // warm-tinted highlight, alpha grows with brightness
+    p[i]=tint[0];p[i+1]=tint[1];p[i+2]=tint[2];p[i+3]=Math.round(k*255);
+  }
+  hx.putImageData(im,0,0);
+  // 2) blur it for real, in two passes (wide + tight) for a filmic bloom
+  const out=document.createElement('canvas');out.width=W;out.height=H;
+  const ox=out.getContext('2d');
+  ox.filter='blur('+Math.round(W*0.03)+'px)';
+  ox.drawImage(hi,0,0,W,H);
+  ox.filter='blur('+Math.round(W*0.012)+'px)';
+  ox.globalAlpha=.8;ox.drawImage(hi,0,0,W,H);
+  ox.filter='none';ox.globalAlpha=1;
+  return out;
+}
 function scanTile(){
   const c=document.createElement('canvas');c.width=4;c.height=4;
   const x=c.getContext('2d');x.fillStyle='rgba(0,0,0,.5)';x.fillRect(0,0,4,2);return c;
@@ -1485,15 +1517,85 @@ function drawNeon(t){
   vignette(false);
 }
 
+/* ── engine D : film press ── duotone-graded, heavy printed texture,
+   real halation bloom, a few hand-painted light strokes, rough type.
+   Assembled from existing parts so it stays light. */
+function drawFilm(t){
+  const shot=shotAt(t),lt=clamp((t-shot.start)/shot.len,0,1);
+  const beat=60/S.bpm,bp=(t/beat)%1,punch=Math.pow(1-bp,5),amt=S.shake/100;
+  const rb=rng(Math.floor(t*S.bpm/60)*7919+53);
+  const sx=(rb()-.5)*14*amt*punch, sy=(rb()-.5)*14*amt*punch;
+
+  const ph=photos[shot.pi%photos.length];
+  const nb=ph.baseCover||ph.base;
+
+  // duotone grade (reuse makeDuo), cached on the photo
+  const key='film|'+S.accent+'|'+S.accent2;
+  if(ph.filmKey!==key){ph.filmDuo=makeDuo(nb,S.accent,S.accent2);ph.filmKey=key;}
+  // halation bloom, cached
+  if(!ph.halo)ph.halo=makeHalation(nb,0.62,'#ffdca6');
+
+  ctx.fillStyle='#07070a';ctx.fillRect(0,0,W,H);
+  const z=1.04+lt*.06+punch*.02*amt;
+  ctx.save();
+  ctx.translate(W/2+sx,H/2+sy);ctx.scale(z,z);
+  // base photo, then duotone graded on top (partial = keeps some real tone)
+  ctx.drawImage(nb,-W/2,-H/2);
+  ctx.globalAlpha=clamp(S.ngrade/100,0,1);
+  ctx.drawImage(ph.filmDuo,-W/2,-H/2);
+  ctx.globalAlpha=1;
+  // halation: screen-composite the blurred highlights → real filmic bloom
+  ctx.globalCompositeOperation='screen';
+  ctx.globalAlpha=.85;
+  ctx.drawImage(ph.halo,-W/2,-H/2);
+  ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
+  ctx.restore();
+
+  // a few hand-painted light strokes (reuse crayonStroke in white), cut-cached
+  if(S.nray>0){
+    const step=S.nboil>0?Math.floor(t*S.nboil):0;
+    const jr=rng((shot.seed*61+step*90001)>>>0);
+    const cnt=Math.round(1+S.nray/100*3);
+    ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+    for(let i=0;i<cnt;i++){
+      const pts=[];const n=10;
+      const x0=W*(.1+jr()*.8),y0=H*(.2+jr()*.6),len=W*(.2+jr()*.5),ang=(jr()-.5)*3.14;
+      for(let s=0;s<=n;s++){const u=s/n;
+        pts.push([x0+Math.cos(ang)*len*u+Math.sin(u*7+i)*W*.02,
+                  y0+Math.sin(ang)*len*u+Math.cos(u*6+i)*W*.02]);}
+      crayonStroke(pts,'#f4efe2',W*(.012+jr()*.02),jr,.8);
+    }
+    ctx.restore();
+  }
+
+  // rough hand type (reuse chalk text mode)
+  const tc=getText(shot.text,'chalk',shot.idx%2===0?'#f4efe2':S.accent2);
+  if(tc){ctx.save();ctx.globalAlpha=.95;
+    const j=rng((shot.seed+ (S.nboil>0?Math.floor(t*S.nboil):0)*7919)>>>0);
+    ctx.translate((j()-.5)*3,(j()-.5)*3);ctx.drawImage(tc,0,0);ctx.restore();}
+
+  // heavy print texture: paper + weave (reuse existing tiles/patterns)
+  if(!paperPat)paperPat=ctx.createPattern(paperTile(),'repeat');
+  ctx.save();ctx.globalCompositeOperation='multiply';ctx.globalAlpha=.5;
+  ctx.fillStyle=paperPat;ctx.fillRect(0,0,W,H);ctx.restore();
+  if(!weavePat)weavePat=ctx.createPattern(weaveTile(),'repeat');
+  ctx.save();ctx.globalCompositeOperation='overlay';ctx.globalAlpha=.4;
+  ctx.fillStyle=weavePat;ctx.fillRect(0,0,W,H);ctx.restore();
+
+  grainPass(S.grain/100*.8);        // heavier grain than others
+  vignette(false);
+}
+
 /* ── router ── */
 function engineFor(shot){
   // in "혼합" mode, assign an engine per cut deterministically from its seed
-  const modes=['cutout','mixed','neon'];
-  return modes[(shot.seed>>>4)%3];
+  const modes=['cutout','mixed','neon','film'];
+  return modes[(shot.seed>>>4)%4];
 }
 function drawByStyle(style,t){
   if(style==='mixed')drawMixed(t);
   else if(style==='neon')drawNeon(t);
+  else if(style==='film')drawFilm(t);
   else drawCutout(t);
 }
 function drawFrame(t){
@@ -1647,7 +1749,8 @@ const syncAr=chipGroup('ar','ar',function(){applyAspect();buildShots();});
 
 function applyStyleUI(){
   const all=S.style==='all';
-  const mixed=S.style==='mixed'||all,neon=S.style==='neon'||all,cutout=S.style==='cutout'||all;
+  const film=S.style==='film';
+  const mixed=S.style==='mixed'||all,neon=S.style==='neon'||all||film,cutout=S.style==='cutout'||all;
   document.getElementById('sec-mixed').classList.toggle('hide',!mixed);
   document.getElementById('sec-neon').classList.toggle('hide',!neon);
   document.getElementById('rowcuts').style.display=cutout?'flex':'none';
@@ -1657,10 +1760,12 @@ function applyStyleUI(){
   document.getElementById('rowdecor').style.display=cutout?'flex':'none';
   document.getElementById('rowdecorw').style.display=cutout?'flex':'none';
   document.getElementById('rowdecorb').style.display=cutout?'flex':'none';
-  const label=all?'혼합':S.style==='mixed'?'mixed media':S.style==='neon'?'neon scribble':'halftone';
-  document.getElementById('mode').textContent=label+' · 9:16';
+  const label=all?'혼합':film?'film press':S.style==='mixed'?'mixed media':S.style==='neon'?'neon scribble':'halftone';
+  document.getElementById('mode').textContent=label+' · '+S.ar;
   document.getElementById('stylehint').textContent=all
-    ?'세 가지 스타일(하프톤 컷아웃·믹스드 미디어·네온 스크리블)이 컷마다 번갈아 나옵니다. 아래에서 각 스타일 세부값을 조절하면 해당 컷들에 적용됩니다.'
+    ?'네 가지 스타일(하프톤 컷아웃·믹스드 미디어·네온 스크리블·필름 프레스)이 컷마다 번갈아 나옵니다. 아래에서 각 스타일 세부값을 조절하면 해당 컷들에 적용됩니다.'
+    :film
+    ?'사진이 두 컬러로 그레이딩되고, 밝은 부분이 실제로 번지는 필름 할레이션 위에 거친 인쇄 질감과 손 페인트 획, 거친 손글씨가 얹힙니다. 위 톤 컬러 두 개로 그레이딩 색을, 네온 설정의 "마커 윤곽선"으로 페인트 획 양을 조절하세요.'
     :S.style==='mixed'
     ?'캔버스 천에 인쇄한 질감 위로 오일파스텔 획이 얹히고, 획은 프레임마다 다시 그려집니다. 컷이 길고 느리게 넘어갑니다.'
     :S.style==='neon'?'사진이 두 컬러 듀오톤으로 물들고, 굵은 마커 윤곽선과 방사형 크레용 획, 손낙서 고리가 컷마다 새로 배치됩니다.'
