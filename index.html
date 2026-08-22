@@ -1361,8 +1361,10 @@ function makeDuo(base,colA,colB){
    return a glow layer to be screen-composited over the frame. Built at low res
    for speed, then upscaled — blur runs once per photo, not per frame. */
 function makeHalation(base,thresh,tintHex){
-  const dw=Math.max(2,W>>1),dh=Math.max(2,H>>1);         // half-res is plenty
-  // 1) pull the highlights on a small canvas
+  // 1) highlights on an OPAQUE BLACK canvas (no alpha). alpha + heavy downscale
+  //    is what produced the checkerboard; on black we can screen-composite it
+  //    later (black reads as transparent under 'screen').
+  const dw=Math.max(2,W>>1),dh=Math.max(2,H>>1);
   const hi=document.createElement('canvas');hi.width=dw;hi.height=dh;
   const hx=hi.getContext('2d');
   hx.drawImage(base,0,0,dw,dh);
@@ -1371,25 +1373,64 @@ function makeHalation(base,thresh,tintHex){
   const t=thresh*255;
   for(let i=0;i<p.length;i+=4){
     const l=.299*p[i]+.587*p[i+1]+.114*p[i+2];
-    if(l<=t){p[i+3]=0;continue;}
-    const k=Math.min(1,(l-t)/(255-t));               // how bright past threshold
-    // warm-tinted highlight, alpha grows with brightness
-    p[i]=tint[0];p[i+1]=tint[1];p[i+2]=tint[2];p[i+3]=Math.round(k*255);
+    const k=l<=t?0:Math.min(1,(l-t)/(255-t));
+    // brightness scaled toward the tint, fully opaque, dark elsewhere
+    p[i]=tint[0]*k;p[i+1]=tint[1]*k;p[i+2]=tint[2]*k;p[i+3]=255;
   }
   hx.putImageData(im,0,0);
-  // 2) blur it for real, in two passes (wide + tight) for a filmic bloom
+
+  // 2) bloom via down/up scaling with smoothing (iOS-safe, no ctx.filter)
   const out=document.createElement('canvas');out.width=W;out.height=H;
-  const ox=out.getContext('2d');
-  ox.filter='blur('+Math.round(W*0.03)+'px)';
-  ox.drawImage(hi,0,0,W,H);
-  ox.filter='blur('+Math.round(W*0.012)+'px)';
-  ox.globalAlpha=.8;ox.drawImage(hi,0,0,W,H);
-  ox.filter='none';ox.globalAlpha=1;
+  const ox=out.getContext('2d');ox.imageSmoothingEnabled=true;ox.imageSmoothingQuality='high';
+  const tmp=document.createElement('canvas');const tc=tmp.getContext('2d');
+  tc.imageSmoothingEnabled=true;tc.imageSmoothingQuality='high';
+
+  // start black so accumulation with 'lighter' stays clean
+  ox.fillStyle='#000';ox.fillRect(0,0,W,H);
+  function bloomPass(shrink,alpha){
+    const sw=Math.max(3,Math.round(W*shrink)),sh=Math.max(3,Math.round(H*shrink));
+    tmp.width=sw;tmp.height=sh;
+    tc.fillStyle='#000';tc.fillRect(0,0,sw,sh);   // opaque, no transparency
+    tc.drawImage(hi,0,0,sw,sh);
+    ox.globalCompositeOperation='lighter';        // add glows together
+    ox.globalAlpha=alpha;
+    ox.drawImage(tmp,0,0,sw,sh,0,0,W,H);
+  }
+  bloomPass(0.06,0.9);
+  bloomPass(0.10,0.7);
+  bloomPass(0.16,0.5);
+  ox.globalCompositeOperation='source-over';ox.globalAlpha=1;
   return out;
 }
 function scanTile(){
   const c=document.createElement('canvas');c.width=4;c.height=4;
   const x=c.getContext('2d');x.fillStyle='rgba(0,0,0,.5)';x.fillRect(0,0,4,2);return c;
+}
+/* soft ink-bleed grain: clumped speckles blurred a touch so they read as ink
+   soaked into paper rather than sharp digital noise. Built once, cached. */
+let inkGrainTiles=null;
+function makeInkGrain(){
+  const n=256,tiles=[];
+  for(let g=0;g<3;g++){
+    const c=document.createElement('canvas');c.width=c.height=n;
+    const x=c.getContext('2d');
+    // scatter small dark & light ink blots of varying size
+    for(let i=0;i<1400;i++){
+      const dark=Math.random()<.5;
+      const r=Math.random()*1.8+0.3;
+      const a=Math.random()*0.5;
+      x.fillStyle=(dark?'rgba(20,16,12,':'rgba(250,244,230,')+a+')';
+      x.beginPath();x.arc(Math.random()*n,Math.random()*n,r,0,6.2832);x.fill();
+    }
+    // soften by down/up scaling (ink soak) — iOS-safe, no ctx.filter
+    const s=document.createElement('canvas');s.width=s.height=n>>1;
+    const sc=s.getContext('2d');sc.imageSmoothingEnabled=true;
+    sc.drawImage(c,0,0,n>>1,n>>1);
+    x.clearRect(0,0,n,n);x.imageSmoothingEnabled=true;
+    x.drawImage(s,0,0,n,n);
+    tiles.push(c);
+  }
+  return tiles;
 }
 /* silhouette: coarse column of top/bottom bounds of the dark subject mass */
 function makeSil(base){
@@ -1610,7 +1651,17 @@ function drawFilm(t){
   ctx.save();ctx.globalCompositeOperation='overlay';ctx.globalAlpha=.4;
   ctx.fillStyle=weavePat;ctx.fillRect(0,0,W,H);ctx.restore();
 
-  grainPass(S.grain/100*.8);        // heavier grain than others
+  // soft ink-bleed grain (overlay) for a printed/soaked look
+  if(S.grain>0){
+    if(!inkGrainTiles)inkGrainTiles=makeInkGrain();
+    const gt=inkGrainTiles[frameN%3];
+    const gp=ctx.createPattern(gt,'repeat');
+    ctx.save();ctx.globalCompositeOperation='overlay';
+    ctx.globalAlpha=Math.min(1,S.grain/100*1.1);
+    ctx.fillStyle=gp;
+    ctx.translate((frameN*23)%256-256,(frameN*47)%256-256);
+    ctx.fillRect(0,0,W+256,H+256);ctx.restore();
+  }
   vignette(false);
 }
 
