@@ -1361,45 +1361,62 @@ function makeDuo(base,colA,colB){
    return a glow layer to be screen-composited over the frame. Built at low res
    for speed, then upscaled — blur runs once per photo, not per frame. */
 function makeHalation(base,thresh,tintHex){
-  // 1) highlights on an OPAQUE BLACK canvas (no alpha). alpha + heavy downscale
-  //    is what produced the checkerboard; on black we can screen-composite it
-  //    later (black reads as transparent under 'screen').
-  const dw=Math.max(2,W>>1),dh=Math.max(2,H>>1);
+  // work at low res for speed
+  const dw=Math.max(8,W>>2),dh=Math.max(8,H>>2);
   const hi=document.createElement('canvas');hi.width=dw;hi.height=dh;
   const hx=hi.getContext('2d');
   hx.drawImage(base,0,0,dw,dh);
   const im=hx.getImageData(0,0,dw,dh),p=im.data;
   const tint=hex2rgb(tintHex||'#ffd9a0');
   const t=thresh*255;
-  for(let i=0;i<p.length;i+=4){
+  // extract highlights into a float buffer (single channel intensity)
+  const N=dw*dh, buf=new Float32Array(N);
+  for(let i=0,j=0;i<p.length;i+=4,j++){
     const l=.299*p[i]+.587*p[i+1]+.114*p[i+2];
-    const k=l<=t?0:Math.min(1,(l-t)/(255-t));
-    // brightness scaled toward the tint, fully opaque, dark elsewhere
+    buf[j]=l<=t?0:Math.min(1,(l-t)/(255-t));
+  }
+  // separable box blur, several passes → gaussian-like, fully smooth.
+  // pure array math, so iOS smoothing quirks can't tile it into a grid.
+  function boxBlur(src,w,h,rad){
+    const tmp=new Float32Array(src.length),out=new Float32Array(src.length);
+    const win=rad*2+1;
+    for(let y=0;y<h;y++){ // horizontal
+      let acc=0;const row=y*w;
+      for(let x=-rad;x<=rad;x++)acc+=src[row+Math.max(0,Math.min(w-1,x))];
+      for(let x=0;x<w;x++){
+        tmp[row+x]=acc/win;
+        const add=src[row+Math.min(w-1,x+rad+1)],sub=src[row+Math.max(0,x-rad)];
+        acc+=add-sub;
+      }
+    }
+    for(let x=0;x<w;x++){ // vertical
+      let acc=0;
+      for(let y=-rad;y<=rad;y++)acc+=tmp[Math.max(0,Math.min(h-1,y))*w+x];
+      for(let y=0;y<h;y++){
+        out[y*w+x]=acc/win;
+        const add=tmp[Math.min(h-1,y+rad+1)*w+x],sub=tmp[Math.max(0,y-rad)*w+x];
+        acc+=add-sub;
+      }
+    }
+    return out;
+  }
+  let b=buf;
+  const rad=Math.max(2,Math.round(dw*0.06));
+  b=boxBlur(b,dw,dh,rad);
+  b=boxBlur(b,dw,dh,rad);
+  b=boxBlur(b,dw,dh,Math.max(1,rad>>1));   // 3 passes ≈ gaussian
+  // write blurred glow back (opaque, tinted, on black)
+  for(let i=0,j=0;i<p.length;i+=4,j++){
+    const k=Math.min(1,b[j]*1.6);
     p[i]=tint[0]*k;p[i+1]=tint[1]*k;p[i+2]=tint[2]*k;p[i+3]=255;
   }
   hx.putImageData(im,0,0);
-
-  // 2) bloom via down/up scaling with smoothing (iOS-safe, no ctx.filter)
+  // upscale the already-blurred low-res glow to full size (smooth because the
+  // source has no high-freq detail left — no grid can appear)
   const out=document.createElement('canvas');out.width=W;out.height=H;
-  const ox=out.getContext('2d');ox.imageSmoothingEnabled=true;ox.imageSmoothingQuality='high';
-  const tmp=document.createElement('canvas');const tc=tmp.getContext('2d');
-  tc.imageSmoothingEnabled=true;tc.imageSmoothingQuality='high';
-
-  // start black so accumulation with 'lighter' stays clean
+  const ox=out.getContext('2d');ox.imageSmoothingEnabled=true;
   ox.fillStyle='#000';ox.fillRect(0,0,W,H);
-  function bloomPass(shrink,alpha){
-    const sw=Math.max(3,Math.round(W*shrink)),sh=Math.max(3,Math.round(H*shrink));
-    tmp.width=sw;tmp.height=sh;
-    tc.fillStyle='#000';tc.fillRect(0,0,sw,sh);   // opaque, no transparency
-    tc.drawImage(hi,0,0,sw,sh);
-    ox.globalCompositeOperation='lighter';        // add glows together
-    ox.globalAlpha=alpha;
-    ox.drawImage(tmp,0,0,sw,sh,0,0,W,H);
-  }
-  bloomPass(0.06,0.9);
-  bloomPass(0.10,0.7);
-  bloomPass(0.16,0.5);
-  ox.globalCompositeOperation='source-over';ox.globalAlpha=1;
+  ox.drawImage(hi,0,0,W,H);
   return out;
 }
 function scanTile(){
