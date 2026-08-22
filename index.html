@@ -428,38 +428,66 @@ const grains=[grainTile(),grainTile(),grainTile(),grainTile()];
 let grainPats=null,dotPat=null,printPat=null,weavePat=null,paperPat=null,vig=null,vigSoft=null,scanPat=null;
 
 /* ── photos ── */
+function ensurePhoto(p){
+  // build (or rebuild) the heavy per-photo canvases on demand
+  if(p.baseW===W&&p.baseH===H&&p.base&&p.toneKey===S.tone)return;
+  if(!p.base)p.base=document.createElement('canvas');
+  p.base.width=W;p.base.height=H;
+  const bx=p.base.getContext('2d');
+  bx.clearRect(0,0,W,H);
+  const s=Math.max(W/p.img.width,H/p.img.height);   // COVER, aspect kept
+  const w=p.img.width*s,h=p.img.height*s;
+  bx.drawImage(p.img,(W-w)/2,(H-h)/2,w,h);
+  p.fit={x:(W-w)/2,y:(H-h)/2,w:w,h:h};
+  applyTone(p.base,S.tone);
+  p.baseCover=p.base;
+  p.half=makeHalf(p.base,S.half);
+  p.avg=avgColor(p.base);
+  // derived caches are invalid now
+  p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};p.halo=null;p.filmKey=null;p.filmDuo=null;
+  p.baseW=W;p.baseH=H;p.toneKey=S.tone;
+  if(p.vseed==null)p.vseed=(Math.random()*1e9)|0;
+}
+function freePhoto(p){
+  // drop heavy canvases for photos not currently on screen
+  p.base=null;p.baseCover=null;p.half=null;p.duo=null;p.duoKey=null;
+  p.sil=null;p.scraps={};p.halo=null;p.filmKey=null;p.filmDuo=null;
+  p.baseW=0;p.baseH=0;p.toneKey=null;
+}
 function prep(){
-  photos.forEach(p=>{
-    if(!p.base||p.base.width!==W||p.base.height!==H){
-      if(!p.base)p.base=document.createElement('canvas');
-      p.base.width=W;p.base.height=H;
-    }
-    const bx=p.base.getContext('2d');
-    bx.clearRect(0,0,W,H);
-    // COVER: keep original aspect, fill the whole canvas (may crop edges).
-    // no stretching — width & height scaled by the same factor.
-    const s=Math.max(W/p.img.width,H/p.img.height);
-    const w=p.img.width*s,h=p.img.height*s;
-    bx.drawImage(p.img,(W-w)/2,(H-h)/2,w,h);
-    p.fit={x:(W-w)/2,y:(H-h)/2,w:w,h:h};
-    applyTone(p.base,S.tone);
-    p.baseCover=p.base;                 // neon shares the same cover base
-    p.half=makeHalf(p.base,S.half);
-    p.avg=avgColor(p.base);
-    p.duo=null;p.duoKey=null;p.sil=null;p.scraps={};p.halo=null;p.filmKey=null;p.filmDuo=null;
-    if(p.vseed==null)p.vseed=(Math.random()*1e9)|0;
-  });
+  // lazy: don't build everything up front (that's what crashed with many photos)
+  photos.forEach(p=>{p.baseW=0;p.baseH=0;p.toneKey=null;p.scraps={};
+    p.duo=null;p.sil=null;p.halo=null;p.filmDuo=null;p.filmKey=null;p.duoKey=null;
+    if(p.vseed==null)p.vseed=(Math.random()*1e9)|0;});
   textCache={};buildShots();
 }
 function addFiles(files){
   const list=[].slice.call(files);
   let left=list.length;if(!left)return;
+  const MAX=1600;                 // cap long side; plenty for 720/864/1280 canvases
   list.forEach(f=>{
     const img=new Image();
+    const url=URL.createObjectURL(f);
     const done=()=>{if(!--left){prep();renderThumbs();}};
-    img.onload=()=>{photos.push({img,url:img.src});done();};
-    img.onerror=done;
-    img.src=URL.createObjectURL(f);
+    img.onload=()=>{
+      // resample to a bounded size so huge phone photos don't exhaust memory
+      let w=img.width,h=img.height;
+      const s=Math.min(1,MAX/Math.max(w,h));
+      w=Math.max(1,Math.round(w*s));h=Math.max(1,Math.round(h*s));
+      const small=document.createElement('canvas');small.width=w;small.height=h;
+      small.getContext('2d').drawImage(img,0,0,w,h);
+      // thumbnail data URL (small) for the strip; keeps no giant blob alive
+      const thumb=document.createElement('canvas');
+      const ts=Math.min(1,200/Math.max(w,h));
+      thumb.width=Math.max(1,Math.round(w*ts));thumb.height=Math.max(1,Math.round(h*ts));
+      thumb.getContext('2d').drawImage(small,0,0,thumb.width,thumb.height);
+      let turl='';try{turl=thumb.toDataURL('image/jpeg',0.7);}catch(e){turl=url;}
+      photos.push({img:small,url:turl});   // img is now a bounded canvas
+      URL.revokeObjectURL(url);             // free the original file blob
+      done();
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);done();};
+    img.src=url;
   });
 }
 function movePhoto(i,dir){
@@ -1600,8 +1628,17 @@ function drawByStyle(style,t){
 }
 function drawFrame(t){
   if(!photos.length||!shots.length){placeholder();return;}
+  const shot=shotAt(t);
+  // build only the photos this cut needs; free ones far from the current cut
+  const keep={};
+  for(let k=0;k<Math.max(1,S.cuts);k++)keep[(shot.pi+k)%photos.length]=1;
+  keep[shot.bi%photos.length]=1;
+  keep[shot.pi%photos.length]=1;
+  // also prebuild the very next cut's main photo to avoid a hitch at the cut
+  const ns=shots[(shots.indexOf(shot)+1)%shots.length];if(ns)keep[ns.pi%photos.length]=1;
+  photos.forEach((p,i)=>{ if(keep[i]) ensurePhoto(p); else if(p.base) freePhoto(p); });
+
   if(S.style==='all'){
-    const shot=shotAt(t);
     drawByStyle(engineFor(shot),t);
   }else{
     drawByStyle(S.style,t);
@@ -1706,8 +1743,8 @@ reg2('bpm','bpm',v=>v,buildShots);
 reg2('dur','dur',v=>v+'s',buildShots);
 reg2('shake','shake',v=>v+'%');
 reg2('cuts','cuts',v=>v);
-reg2('half','half',v=>v+'px',()=>{photos.forEach(p=>{p.half=makeHalf(p.base,S.half);});});
-reg2('halfgap','halfgap',v=>v+'%',()=>{photos.forEach(p=>{p.half=makeHalf(p.base,S.half);});});
+reg2('half','half',v=>v+'px',()=>{photos.forEach(p=>{if(p.base){p.half=makeHalf(p.base,S.half);}else{p.baseW=0;}});});
+reg2('halfgap','halfgap',v=>v+'%',()=>{photos.forEach(p=>{if(p.base){p.half=makeHalf(p.base,S.half);}else{p.baseW=0;}});});
 reg2('grain','grain',v=>v+'%');
 reg2('weave','weave',v=>v+'%');
 reg2('paper','paper',v=>v+'%');
@@ -1744,7 +1781,7 @@ const syncFrame=chipGroup('mframe','frame');
 const syncMotion=chipGroup('motion','motion');
 const syncTexttype=chipGroup('texttype','texttype',function(){textCache={};});
 const syncFont=chipGroup('font','font',function(){textCache={};});
-const syncHalftone=chipGroup('halftone','halftone',function(){photos.forEach(p=>{p.half=makeHalf(p.base,S.half);});});
+const syncHalftone=chipGroup('halftone','halftone',function(){photos.forEach(p=>{if(p.base){p.half=makeHalf(p.base,S.half);}else{p.baseW=0;}});});
 const syncAr=chipGroup('ar','ar',function(){applyAspect();buildShots();});
 
 function applyStyleUI(){
