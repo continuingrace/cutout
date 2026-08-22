@@ -1,14 +1,15 @@
-/* CUTOUT service worker — network-first, self-updating.
-   New commits appear on next app open; no reinstall needed. */
-const CACHE='cutout-v3';
+/* CUTOUT service worker — network-first.
+   New commits appear on the next fresh launch. We intentionally do NOT
+   skipWaiting/claim aggressively, because forcing activation mid-session makes
+   iOS fire controllerchange (which was reloading and wiping the user's work). */
+const CACHE='cutout-v4';
 
-self.addEventListener('install',e=>{self.skipWaiting();});
+self.addEventListener('install',e=>{/* wait normally; activates next launch */});
 
 self.addEventListener('activate',e=>{
   e.waitUntil((async()=>{
     const keys=await caches.keys();
     await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));
-    await self.clients.claim();
   })());
 });
 

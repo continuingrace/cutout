@@ -1867,7 +1867,7 @@ function applyStyleUI(){
   document.getElementById('rowdecorw').style.display=cutout?'flex':'none';
   document.getElementById('rowdecorb').style.display=cutout?'flex':'none';
   const label=all?'혼합':film?'film press':S.style==='mixed'?'mixed media':S.style==='neon'?'neon scribble':'halftone';
-  document.getElementById('mode').textContent=label+' · '+S.ar+' · v3';
+  document.getElementById('mode').textContent=label+' · '+S.ar+' · v4';
   document.getElementById('stylehint').textContent=all
     ?'네 가지 스타일(하프톤 컷아웃·믹스드 미디어·네온 스크리블·필름 프레스)이 컷마다 번갈아 나옵니다. 아래에서 각 스타일 세부값을 조절하면 해당 컷들에 적용됩니다.'
     :film
@@ -1969,20 +1969,11 @@ const topbar=document.getElementById('topbar');
 
 /* ── auto-updating service worker: new commits show on next open, no reinstall ── */
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').then(function(reg){
-    reg.addEventListener('updatefound',function(){
-      const nw=reg.installing;
-      nw&&nw.addEventListener('statechange',function(){
-        if(nw.state==='installed'&&navigator.serviceWorker.controller){
-          nw.postMessage('skip');           // activate new version immediately
-        }
-      });
-    });
-  }).catch(function(){});
-  let reloaded=false;
-  navigator.serviceWorker.addEventListener('controllerchange',function(){
-    if(reloaded)return;reloaded=true;location.reload();   // swap in fresh files once
-  });
+  // register only. NO auto-reload on controllerchange — on iOS, returning from
+  // another app can fire controllerchange and location.reload() there wipes the
+  // in-progress edit. New versions are still picked up on the next fresh launch
+  // (the worker is network-first), just not force-reloaded mid-session.
+  navigator.serviceWorker.register('sw.js').catch(function(){});
 }
 </script>
 </body>
