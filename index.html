@@ -1361,62 +1361,41 @@ function makeDuo(base,colA,colB){
    return a glow layer to be screen-composited over the frame. Built at low res
    for speed, then upscaled — blur runs once per photo, not per frame. */
 function makeHalation(base,thresh,tintHex){
-  // work at low res for speed
-  const dw=Math.max(8,W>>2),dh=Math.max(8,H>>2);
-  const hi=document.createElement('canvas');hi.width=dw;hi.height=dh;
-  const hx=hi.getContext('2d');
-  hx.drawImage(base,0,0,dw,dh);
-  const im=hx.getImageData(0,0,dw,dh),p=im.data;
+  // FULL resolution — no upscaling anywhere, so iOS can't produce a pixel grid.
+  const out=document.createElement('canvas');out.width=W;out.height=H;
+  const ox=out.getContext('2d');
+  ox.drawImage(base,0,0,W,H);
+  const im=ox.getImageData(0,0,W,H),p=im.data;
   const tint=hex2rgb(tintHex||'#ffd9a0');
   const t=thresh*255;
-  // extract highlights into a float buffer (single channel intensity)
-  const N=dw*dh, buf=new Float32Array(N);
+  const N=W*H, buf=new Float32Array(N);
   for(let i=0,j=0;i<p.length;i+=4,j++){
     const l=.299*p[i]+.587*p[i+1]+.114*p[i+2];
     buf[j]=l<=t?0:Math.min(1,(l-t)/(255-t));
   }
-  // separable box blur, several passes → gaussian-like, fully smooth.
-  // pure array math, so iOS smoothing quirks can't tile it into a grid.
+  // separable box blur at full res (3 passes ≈ gaussian). pure math, no scaling.
   function boxBlur(src,w,h,rad){
-    const tmp=new Float32Array(src.length),out=new Float32Array(src.length);
+    const tmp=new Float32Array(src.length),o=new Float32Array(src.length);
     const win=rad*2+1;
-    for(let y=0;y<h;y++){ // horizontal
-      let acc=0;const row=y*w;
+    for(let y=0;y<h;y++){let acc=0;const row=y*w;
       for(let x=-rad;x<=rad;x++)acc+=src[row+Math.max(0,Math.min(w-1,x))];
-      for(let x=0;x<w;x++){
-        tmp[row+x]=acc/win;
-        const add=src[row+Math.min(w-1,x+rad+1)],sub=src[row+Math.max(0,x-rad)];
-        acc+=add-sub;
-      }
-    }
-    for(let x=0;x<w;x++){ // vertical
-      let acc=0;
+      for(let x=0;x<w;x++){tmp[row+x]=acc/win;
+        acc+=src[row+Math.min(w-1,x+rad+1)]-src[row+Math.max(0,x-rad)];}}
+    for(let x=0;x<w;x++){let acc=0;
       for(let y=-rad;y<=rad;y++)acc+=tmp[Math.max(0,Math.min(h-1,y))*w+x];
-      for(let y=0;y<h;y++){
-        out[y*w+x]=acc/win;
-        const add=tmp[Math.min(h-1,y+rad+1)*w+x],sub=tmp[Math.max(0,y-rad)*w+x];
-        acc+=add-sub;
-      }
-    }
-    return out;
+      for(let y=0;y<h;y++){o[y*w+x]=acc/win;
+        acc+=tmp[Math.min(h-1,y+rad+1)*w+x]-tmp[Math.max(0,y-rad)*w+x];}}
+    return o;
   }
-  let b=buf;
-  const rad=Math.max(2,Math.round(dw*0.06));
-  b=boxBlur(b,dw,dh,rad);
-  b=boxBlur(b,dw,dh,rad);
-  b=boxBlur(b,dw,dh,Math.max(1,rad>>1));   // 3 passes ≈ gaussian
-  // write blurred glow back (opaque, tinted, on black)
+  const rad=Math.max(4,Math.round(W*0.05));
+  let b=boxBlur(buf,W,H,rad);
+  b=boxBlur(b,W,H,rad);
+  b=boxBlur(b,W,H,Math.max(2,rad>>1));
   for(let i=0,j=0;i<p.length;i+=4,j++){
-    const k=Math.min(1,b[j]*1.6);
+    const k=Math.min(1,b[j]*1.7);
     p[i]=tint[0]*k;p[i+1]=tint[1]*k;p[i+2]=tint[2]*k;p[i+3]=255;
   }
-  hx.putImageData(im,0,0);
-  // upscale the already-blurred low-res glow to full size (smooth because the
-  // source has no high-freq detail left — no grid can appear)
-  const out=document.createElement('canvas');out.width=W;out.height=H;
-  const ox=out.getContext('2d');ox.imageSmoothingEnabled=true;
-  ox.fillStyle='#000';ox.fillRect(0,0,W,H);
-  ox.drawImage(hi,0,0,W,H);
+  ox.putImageData(im,0,0);
   return out;
 }
 function scanTile(){
@@ -1632,10 +1611,14 @@ function drawFilm(t){
   ctx.globalAlpha=clamp(S.ngrade/100,0,1);
   ctx.drawImage(ph.filmDuo,-W/2,-H/2);
   ctx.globalAlpha=1;
-  // halation: screen-composite the blurred highlights → real filmic bloom
+  ctx.restore();
+  // halation OUTSIDE the zoom — drawn 1:1 at full size so it is never scaled
+  // (scaling the soft glow is what iOS turned into a pixel grid). slight offset
+  // only, to follow the shake.
+  ctx.save();
   ctx.globalCompositeOperation='screen';
   ctx.globalAlpha=.85;
-  ctx.drawImage(ph.halo,-W/2,-H/2);
+  ctx.drawImage(ph.halo,sx,sy);
   ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
   ctx.restore();
 
