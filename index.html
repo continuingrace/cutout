@@ -417,12 +417,32 @@ function paperTile(){
     d.data[i]=v;d.data[i+1]=v-3;d.data[i+2]=v-10;d.data[i+3]=255;
   }
   x.putImageData(d,0,0);
-  // a few faint fibre streaks
   x.strokeStyle='rgba(120,110,90,.06)';
   for(let k=0;k<40;k++){x.lineWidth=Math.random()*1.2;
     const y=Math.random()*n;x.beginPath();x.moveTo(0,y);
     x.lineTo(n,y+(Math.random()-.5)*8);x.stroke();}
   return c;
+}
+/* full-frame paper texture built ONCE at W×H — no pattern tiling, so there are
+   no repeating seams to get amplified into a grid by multiply/overlay. */
+let filmPaper=null,filmPaperWH='';
+function getFilmPaper(){
+  if(filmPaper&&filmPaperWH===W+'x'+H)return filmPaper;
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const x=c.getContext('2d');const d=x.createImageData(W,H),p=d.data;
+  for(let y=0;y<H;y++)for(let xx=0;xx<W;xx++){
+    const i=(y*W+xx)*4;
+    const blotch=16*Math.sin(xx*.012)*Math.sin(y*.010)+10*Math.sin((xx+y)*.006);
+    const fibre=(Math.random()-.5)*22;
+    let v=238+blotch+fibre;v=clamp(v,170,255);
+    p[i]=v;p[i+1]=v-3;p[i+2]=v-9;p[i+3]=255;
+  }
+  x.putImageData(d,0,0);
+  x.strokeStyle='rgba(120,110,90,.05)';
+  for(let k=0;k<Math.round(H/8);k++){x.lineWidth=Math.random()*1.1;
+    const y=Math.random()*H;x.beginPath();x.moveTo(0,y);
+    x.lineTo(W,y+(Math.random()-.5)*10);x.stroke();}
+  filmPaper=c;filmPaperWH=W+'x'+H;return c;
 }
 const grains=[grainTile(),grainTile(),grainTile(),grainTile()];
 let grainPats=null,dotPat=null,printPat=null,weavePat=null,paperPat=null,vig=null,vigSoft=null,scanPat=null;
@@ -1645,13 +1665,9 @@ function drawFilm(t){
     const j=rng((shot.seed+ (S.nboil>0?Math.floor(t*S.nboil):0)*7919)>>>0);
     ctx.translate((j()-.5)*3,(j()-.5)*3);ctx.drawImage(tc,0,0);ctx.restore();}
 
-  // heavy print texture: paper + weave (reuse existing tiles/patterns)
-  if(!paperPat)paperPat=ctx.createPattern(paperTile(),'repeat');
-  ctx.save();ctx.globalCompositeOperation='multiply';ctx.globalAlpha=.5;
-  ctx.fillStyle=paperPat;ctx.fillRect(0,0,W,H);ctx.restore();
-  if(!weavePat)weavePat=ctx.createPattern(weaveTile(),'repeat');
-  ctx.save();ctx.globalCompositeOperation='overlay';ctx.globalAlpha=.4;
-  ctx.fillStyle=weavePat;ctx.fillRect(0,0,W,H);ctx.restore();
+  // heavy print texture: full-frame paper (no tiling seams → no grid)
+  ctx.save();ctx.globalCompositeOperation='multiply';ctx.globalAlpha=.42;
+  ctx.drawImage(getFilmPaper(),0,0);ctx.restore();
 
   // soft ink-bleed grain (overlay) for a printed/soaked look
   if(S.grain>0){
@@ -1851,7 +1867,7 @@ function applyStyleUI(){
   document.getElementById('rowdecorw').style.display=cutout?'flex':'none';
   document.getElementById('rowdecorb').style.display=cutout?'flex':'none';
   const label=all?'혼합':film?'film press':S.style==='mixed'?'mixed media':S.style==='neon'?'neon scribble':'halftone';
-  document.getElementById('mode').textContent=label+' · '+S.ar+' · v2';
+  document.getElementById('mode').textContent=label+' · '+S.ar+' · v3';
   document.getElementById('stylehint').textContent=all
     ?'네 가지 스타일(하프톤 컷아웃·믹스드 미디어·네온 스크리블·필름 프레스)이 컷마다 번갈아 나옵니다. 아래에서 각 스타일 세부값을 조절하면 해당 컷들에 적용됩니다.'
     :film

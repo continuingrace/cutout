@@ -1,6 +1,6 @@
 /* CUTOUT service worker — network-first, self-updating.
    New commits appear on next app open; no reinstall needed. */
-const CACHE='cutout-v2';
+const CACHE='cutout-v3';
 
 self.addEventListener('install',e=>{self.skipWaiting();});
 
