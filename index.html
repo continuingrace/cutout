@@ -1851,7 +1851,7 @@ function applyStyleUI(){
   document.getElementById('rowdecorw').style.display=cutout?'flex':'none';
   document.getElementById('rowdecorb').style.display=cutout?'flex':'none';
   const label=all?'혼합':film?'film press':S.style==='mixed'?'mixed media':S.style==='neon'?'neon scribble':'halftone';
-  document.getElementById('mode').textContent=label+' · '+S.ar;
+  document.getElementById('mode').textContent=label+' · '+S.ar+' · v2';
   document.getElementById('stylehint').textContent=all
     ?'네 가지 스타일(하프톤 컷아웃·믹스드 미디어·네온 스크리블·필름 프레스)이 컷마다 번갈아 나옵니다. 아래에서 각 스타일 세부값을 조절하면 해당 컷들에 적용됩니다.'
     :film
