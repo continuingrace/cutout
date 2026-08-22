@@ -144,6 +144,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
     <button class="chip" data-v="cutout">하프톤 컷아웃</button>
     <button class="chip" data-v="mixed">믹스드 미디어</button>
     <button class="chip" data-v="neon">네온 스크리블</button>
+    <button class="chip" data-v="all">혼합 (컷마다)</button>
   </div>
   <p class="hint" id="stylehint"></p>
 </section>
@@ -239,7 +240,12 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
     <button class="chip" data-v="color">컬러</button>
   </div>
   <div class="chips" style="margin-top:12px" id="acc"></div>
-  <div class="row" style="margin-top:16px" id="rowhalf"><div class="k">하프톤</div><input type="range" id="half" min="4" max="16" step="1"><div class="v" id="halfv"></div></div>
+  <label class="f" style="margin-top:14px">하프톤 배경</label>
+  <div class="chips" id="halftone">
+    <button class="chip" data-v="soft">밝은 점</button>
+    <button class="chip" data-v="color">컬러 점</button>
+  </div>
+  <div class="row" style="margin-top:14px" id="rowhalf"><div class="k">하프톤</div><input type="range" id="half" min="4" max="16" step="1"><div class="v" id="halfv"></div></div>
   <div class="row"><div class="k">그레인</div><input type="range" id="grain" min="0" max="100" step="5"><div class="v" id="grainv"></div></div>
 </section>
 
@@ -270,7 +276,7 @@ const ctx=cv.getContext('2d',{alpha:false});
 const KEY='re_cutout_v4',TPKEY='re_cutout_tpl_v4';
 const ACCENTS=['#e4322b','#1f3f8f','#f2c53d','#3fb27f','#efece4'];
 
-let S={style:'cutout',bpm:124,dur:8,tone:'mono',accent:ACCENTS[0],half:8,grain:35,cuts:2,shake:100,
+let S={style:'cutout',bpm:124,dur:8,tone:'mono',accent:ACCENTS[0],half:8,halftone:'soft',grain:35,cuts:2,shake:100,
   text:'',tsize:100,tpos:42,frame:'mix',weave:60,pastel:60,boil:9,print:55,hand:50,
   accent2:ACCENTS[2],ngrade:85,nray:75,ndoodle:60,nboil:7,
   motion:'bounce',texttype:'ransom',tornedge:70,decor:60,decorboil:6,font:'pretendard'};
@@ -315,15 +321,23 @@ function applyTone(c,tone){
 
 function makeHalf(base,cell){
   const c=document.createElement('canvas');c.width=W;c.height=H;
-  const x=c.getContext('2d');x.fillStyle='#050505';x.fillRect(0,0,W,H);
+  const x=c.getContext('2d');
+  const color=(S.halftone==='color');
+  x.fillStyle=color?'#0b0b0d':'#050505';x.fillRect(0,0,W,H);
   const src=base.getContext('2d').getImageData(0,0,W,H).data;
   const rmax=cell*.66;
   for(let y=cell/2;y<H;y+=cell)for(let xx=cell/2;xx<W;xx+=cell){
     const i=((y|0)*W+(xx|0))*4;
-    const l=(.299*src[i]+.587*src[i+1]+.114*src[i+2])/255;
+    const R=src[i],G=src[i+1],B=src[i+2];
+    const l=(.299*R+.587*G+.114*B)/255;
     if(l<.05)continue;
-    x.beginPath();x.arc(xx,y,rmax*Math.pow(l,.8),0,6.2832);
-    x.fillStyle='rgba('+((src[i]*.4+180)|0)+','+((src[i+1]*.4+180)|0)+','+((src[i+2]*.4+182)|0)+','+(.3+l*.65)+')';
+    x.beginPath();x.arc(xx,y,rmax*Math.pow(l,color?.62:.8),0,6.2832);
+    if(color){
+      // keep the photo's own hue, just lift slightly so it reads on dark bg
+      x.fillStyle='rgba('+((R*.85+30)|0)+','+((G*.85+30)|0)+','+((B*.85+30)|0)+','+(.45+l*.5)+')';
+    }else{
+      x.fillStyle='rgba('+((R*.4+180)|0)+','+((G*.4+180)|0)+','+((B*.4+182)|0)+','+(.3+l*.65)+')';
+    }
     x.fill();
   }
   return c;
@@ -414,14 +428,18 @@ function renderThumbs(){
 }
 
 /* ── timeline ── */
+function mulFor(style){return style==='mixed'?[4,6]:style==='neon'?[2,3]:[1,2];}
 function buildShots(){
   shots=[];if(!photos.length)return;
   const beat=60/S.bpm,r=rng(1234),lines=S.text.split('\n').map(s=>s.trim());
-  const mul=S.style==='mixed'?[4,6]:S.style==='neon'?[2,3]:[1,2];
   let t=0,i=0;
   while(t<S.dur+.5){
+    const seed=(r()*1e9)|0;
+    // in 혼합 mode each cut has its own engine, so match its pacing
+    const style=(S.style==='all')?['cutout','mixed','neon'][(seed>>>4)%3]:S.style;
+    const mul=mulFor(style);
     const len=beat*(r()<.5?mul[0]:mul[1]);
-    shots.push({idx:i,start:t,len:len,seed:(r()*1e9)|0,pi:i%photos.length,
+    shots.push({idx:i,start:t,len:len,seed:seed,pi:i%photos.length,
       bi:(i+(photos.length>1?1:0))%photos.length,
       text:lines.length?lines[i%lines.length]:''});
     t+=len;i++;
@@ -751,100 +769,120 @@ function path(p){ctx.beginPath();for(let i=0;i<p.length;i++){
   if(i)ctx.lineTo(p[i][0],p[i][1]);else ctx.moveTo(p[i][0],p[i][1]);}ctx.closePath();}
 
 /* Build a torn-paper scrap on an offscreen canvas.
-   Instead of stroking a vector outline, we rasterise the blob then chew the
-   edge pixel-by-pixel and sprout pale fibres, so the rim reads as hand-torn
-   paper (deckle edge) rather than a clean cut. Cached per (photo,slot,shape). */
+   Real paper tears as ONE long continuous seam, not crumbled all around.
+   So we keep the piece mostly rectangular and give its vertical sides a single
+   flowing torn edge (a low-frequency random walk), then lay a soft white
+   deckle band of exposed paper fibre along that seam. Cached per shape. */
 function buildScrap(ph,seed,rad,ry,rough,zoom,ox,oy){
-  const pad=Math.ceil(rad*0.5)+24;
-  const w=Math.ceil(rad*2+pad*2),h=Math.ceil(ry*2+pad*2);
+  const pad=Math.ceil(rad*0.35)+22;
+  const pw=rad*2, phh=ry*2;                       // paper piece size
+  const w=Math.ceil(pw+pad*2),h=Math.ceil(phh+pad*2);
   const cvx=document.createElement('canvas');cvx.width=w;cvx.height=h;
   const x=cvx.getContext('2d');
   const cx=w/2,cy=h/2;
   const r=rng(seed);
 
-  // 1) base torn silhouette as a filled shape (coarse control pts, subdivided)
-  const nverts=10+((r()*7)|0);
-  const pts=tornPath(rng(seed*3+1),cx,cy,rad,ry,nverts,rough);
-  x.beginPath();
-  for(let i=0;i<pts.length;i++){i?x.lineTo(pts[i][0],pts[i][1]):x.moveTo(pts[i][0],pts[i][1]);}
-  x.closePath();
-  x.fillStyle='#fff';x.fill();
+  const L=cx-rad, R=cx+rad, T=cy-ry, B=cy+ry;
+  const amp=rad*(0.10+rough*0.16);                // how far the seam wanders
+  const segs=Math.max(10,(phh/26)|0);             // vertical resolution
 
-  // 2) chew the edge: knock out bites of varying size all along the border so
-  //    the outline loses its smooth vector quality and turns crumbly
-  x.globalCompositeOperation='destination-out';
-  const per=pts.length;
-  for(let i=0;i<per;i++){
-    const a=pts[i],b=pts[(i+1)%per];
-    const dist=Math.hypot(b[0]-a[0],b[1]-a[1]);
-    const steps=Math.max(2,(dist/4)|0);
-    for(let s=0;s<steps;s++){
-      const u=s/steps;
-      const px=a[0]+(b[0]-a[0])*u,py=a[1]+(b[1]-a[1])*u;
-      // most bites tiny, a few large — power curve gives crumbly deckle
-      const big=r()<.12;
-      const rr=(big? rad*(.05+r()*.09) : rad*(.008+r()*.03))*(0.4+rough);
-      x.beginPath();x.arc(px+(r()-.5)*4,py+(r()-.5)*4,rr,0,6.2832);x.fill();
+  // continuous torn seam for a vertical edge: smooth random walk down the side
+  function seam(baseX,dir){
+    const pts=[];let off=(r()-.5)*amp*0.5;
+    for(let s=0;s<=segs;s++){
+      const u=s/segs, y=T+u*(B-T);
+      off += (r()-.5)*amp*0.5;                     // wander
+      off *= 0.78;                                 // spring back → long smooth tear
+      const fiber=(r()-.5)*amp*0.14;               // tiny fibre flicks
+      // taper the tear in near top & bottom so corners stay attached
+      const taper=Math.sin(Math.PI*u);
+      pts.push([baseX + dir*(off*taper+fiber), y]);
     }
+    return pts;
   }
-  x.globalCompositeOperation='source-over';
+  // decide which sides are torn: usually one side, sometimes both
+  const tornLeft = r()<.7, tornRight = !tornLeft || r()<.5;
+  const leftPts  = tornLeft ? seam(L,1)  : [[L,T],[L,B]];
+  const rightPts = tornRight? seam(R,-1) : [[R,T],[R,B]];
 
-  // 3) paint the PHOTO into whatever paper remains
-  x.save();
-  x.globalCompositeOperation='source-atop';
+  // build the paper outline: down the left seam, across bottom, up the right seam
+  function outline(){
+    x.beginPath();
+    x.moveTo(leftPts[0][0],leftPts[0][1]);
+    for(let i=1;i<leftPts.length;i++)x.lineTo(leftPts[i][0],leftPts[i][1]);
+    x.lineTo(rightPts[rightPts.length-1][0],rightPts[rightPts.length-1][1]);
+    for(let i=rightPts.length-2;i>=0;i--)x.lineTo(rightPts[i][0],rightPts[i][1]);
+    x.closePath();
+  }
+
+  // 1) paper base (slightly warm white)
+  outline();x.fillStyle='#f4f1e8';x.fill();
+
+  // 2) photo painted inside the paper
+  x.save();outline();x.clip();
   x.drawImage(ph.base, cx-W*zoom/2+ox, cy-H*zoom/2+oy, W*zoom, H*zoom);
   x.restore();
 
-  // 4) inner white deckle band: erode a copy of the mask and subtract, leaving
-  //    a ragged pale rim of exposed paper just inside the torn edge
-  //    (approximate by stroking the shape with a soft pale line, clipped)
-  x.save();
-  x.globalCompositeOperation='source-atop';
-  x.lineJoin='round';x.lineCap='round';
-  for(let pass=0;pass<3;pass++){
-    x.beginPath();
-    for(let i=0;i<pts.length;i++){i?x.lineTo(pts[i][0],pts[i][1]):x.moveTo(pts[i][0],pts[i][1]);}
-    x.closePath();
-    x.globalAlpha=.5-pass*.13;
-    x.lineWidth=(rad*.05)*(1-pass*.28)*(0.6+rough);
-    x.strokeStyle=pass<2?'#f6f2e9':'#e9e3d5';
-    x.stroke();
+  // 3) white deckle band of exposed fibre running ALONG each torn seam.
+  //    drawn as a soft inward gradient stroke so the fibre edge reads as paper,
+  //    thicker + brighter right at the tear, fading into the photo.
+  function deckle(pts,dir){
+    if(pts.length<3)return;
+    x.save();outline();x.clip();
+    for(let pass=0;pass<3;pass++){
+      const band=rad*(0.11-pass*0.03)*(0.7+rough);
+      x.beginPath();
+      x.moveTo(pts[0][0],pts[0][1]);
+      for(let i=1;i<pts.length;i++)x.lineTo(pts[i][0],pts[i][1]);
+      x.lineWidth=band*2;
+      x.lineJoin='round';x.lineCap='round';
+      x.globalAlpha=(pass===0?.9:pass===1?.5:.28);
+      x.strokeStyle=pass<2?'#f7f3ea':'#e7e0d0';
+      x.stroke();
+    }
+    x.restore();
   }
-  x.restore();
+  deckle(leftPts,1);deckle(rightPts,-1);
 
-  // 5) fibrous paper grain over the whole scrap for painterly tooth.
-  //    build the grain on a temp layer, then stamp it with source-atop so it
-  //    only darkens existing scrap pixels and never bleeds past the torn edge.
+  // 4) soft shadow just INSIDE the seam so the paper looks lifted, not flat
+  function seamShadow(pts,dir){
+    if(pts.length<3)return;
+    x.save();outline();x.clip();
+    x.beginPath();
+    x.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<pts.length;i++)x.lineTo(pts[i][0],pts[i][1]);
+    x.lineWidth=rad*0.05;x.globalAlpha=.16;
+    x.strokeStyle='rgba(90,78,58,1)';
+    x.translate(dir*rad*0.06,0);          // push shadow toward photo side
+    x.stroke();x.restore();
+  }
+  seamShadow(leftPts,1);seamShadow(rightPts,-1);
+
+  // 5) fibrous paper grain over the whole scrap (source-atop = inside only)
   {
     const gl=document.createElement('canvas');gl.width=w;gl.height=h;
     const gx=gl.getContext('2d');
     const gt=grains[(seed>>>3)&3];
     gx.fillStyle=gx.createPattern(gt,'repeat');gx.fillRect(0,0,w,h);
-    x.save();
-    x.globalCompositeOperation='source-atop';
-    x.globalAlpha=.42;
-    x.drawImage(gl,0,0);
-    x.restore();
+    x.save();x.globalCompositeOperation='source-atop';x.globalAlpha=.32;
+    x.drawImage(gl,0,0);x.restore();
   }
 
-  // 6) loose fibres sprouting outward from the rim (pale, thin, a few per edge)
-  x.save();
-  x.strokeStyle='rgba(246,242,233,.9)';x.lineCap='round';
-  for(let i=0;i<pts.length;i++){
-    if(r()<.55)continue;
-    const p=pts[i];
-    const nx=p[0]-cx,ny=p[1]-cy,nl=Math.hypot(nx,ny)||1;
-    const len=rad*(.02+r()*.06);
-    x.globalAlpha=.3+r()*.5;x.lineWidth=.6+r()*1.1;
-    x.beginPath();x.moveTo(p[0],p[1]);
-    x.lineTo(p[0]+nx/nl*len+(r()-.5)*3,p[1]+ny/nl*len+(r()-.5)*3);
-    x.stroke();
-  }
+  // 6) a few loose fibres poking out along the seams (short, pale)
+  x.save();x.strokeStyle='rgba(247,243,234,.9)';x.lineCap='round';
+  [[leftPts,1],[rightPts,-1]].forEach(([pts,dir])=>{
+    for(let i=1;i<pts.length-1;i++){
+      if(r()<.7)continue;
+      const p=pts[i];const len=rad*(.015+r()*.04);
+      x.globalAlpha=.3+r()*.4;x.lineWidth=.6+r()*1.0;
+      x.beginPath();x.moveTo(p[0],p[1]);
+      x.lineTo(p[0]-dir*len+(r()-.5)*3,p[1]+(r()-.5)*4);x.stroke();
+    }
+  });
   x.restore();
 
   return {canvas:cvx,cx,cy,w,h};
 }
-let scrapGrainPats=null;
 
 function drawCut(ph,shot,k,lt,mo){
   // per-photo + per-slot variety: shape, size, tilt, framing all differ
@@ -969,14 +1007,21 @@ function drawPastel(shot,t,reg){
     const col=pal[Math.floor(base()*pal.length)];
     const ax=reg.x+base()*reg.w,ay=reg.y+base()*reg.h;
     const len=reg.w*(.18+base()*.42);
-    const ang=(base()-.5)*3.14;
+    const ang=(base()-.5)*6.2832;                 // full range direction
     const jx=(jit()-.5)*7,jy=(jit()-.5)*7;
     if(kind<.16){
       sprayBlob(ax+jx,ay+jy,len*.55,col,jit,amount);
     }else{
-      const bx=ax+Math.cos(ang)*len*.5+(jit()-.5)*22;
-      const by=ay+Math.sin(ang)*len*.5+(jit()-.5)*22;
-      pastelStroke(ax+jx,ay+jy,bx,by,ax+Math.cos(ang)*len+jx,ay+Math.sin(ang)*len+jy,
+      // end point of the stroke
+      const ex=ax+Math.cos(ang)*len, ey=ay+Math.sin(ang)*len;
+      // control point pushed off the mid-line along the normal → real curve.
+      // sign & magnitude randomised so strokes bow different ways, like a brush.
+      const mx=(ax+ex)/2, my=(ay+ey)/2;
+      const nx=-Math.sin(ang), ny=Math.cos(ang);
+      const bow=len*(base()-.5)*1.1;               // how much it curves (±)
+      const cxp=mx+nx*bow+(jit()-.5)*16;
+      const cyp=my+ny*bow+(jit()-.5)*16;
+      pastelStroke(ax+jx,ay+jy, cxp,cyp, ex+(jit()-.5)*10,ey+(jit()-.5)*10,
         col,reg.w*(.018+base()*.05),jit,amount*(.5+base()*.6));
     }
   }
@@ -1236,11 +1281,24 @@ function drawNeon(t){
 }
 
 /* ── router ── */
+function engineFor(shot){
+  // in "혼합" mode, assign an engine per cut deterministically from its seed
+  const modes=['cutout','mixed','neon'];
+  return modes[(shot.seed>>>4)%3];
+}
+function drawByStyle(style,t){
+  if(style==='mixed')drawMixed(t);
+  else if(style==='neon')drawNeon(t);
+  else drawCutout(t);
+}
 function drawFrame(t){
   if(!photos.length||!shots.length){placeholder();return;}
-  if(S.style==='mixed')drawMixed(t);
-  else if(S.style==='neon')drawNeon(t);
-  else drawCutout(t);
+  if(S.style==='all'){
+    const shot=shotAt(t);
+    drawByStyle(engineFor(shot),t);
+  }else{
+    drawByStyle(S.style,t);
+  }
   frameN++;
 }
 
@@ -1375,9 +1433,11 @@ const syncFrame=chipGroup('frame','frame');
 const syncMotion=chipGroup('motion','motion');
 const syncTexttype=chipGroup('texttype','texttype',function(){textCache={};});
 const syncFont=chipGroup('font','font',function(){textCache={};});
+const syncHalftone=chipGroup('halftone','halftone',function(){photos.forEach(p=>{p.half=makeHalf(p.base,S.half);});});
 
 function applyStyleUI(){
-  const mixed=S.style==='mixed',neon=S.style==='neon',cutout=S.style==='cutout';
+  const all=S.style==='all';
+  const mixed=S.style==='mixed'||all,neon=S.style==='neon'||all,cutout=S.style==='cutout'||all;
   document.getElementById('sec-mixed').classList.toggle('hide',!mixed);
   document.getElementById('sec-neon').classList.toggle('hide',!neon);
   document.getElementById('rowcuts').style.display=cutout?'flex':'none';
@@ -1385,11 +1445,13 @@ function applyStyleUI(){
   document.getElementById('rowtorn').style.display=cutout?'flex':'none';
   document.getElementById('rowdecor').style.display=cutout?'flex':'none';
   document.getElementById('rowdecorb').style.display=cutout?'flex':'none';
-  const label=mixed?'mixed media':neon?'neon scribble':'halftone';
+  const label=all?'혼합':S.style==='mixed'?'mixed media':S.style==='neon'?'neon scribble':'halftone';
   document.getElementById('mode').textContent=label+' · 9:16';
-  document.getElementById('stylehint').textContent=mixed
+  document.getElementById('stylehint').textContent=all
+    ?'세 가지 스타일(하프톤 컷아웃·믹스드 미디어·네온 스크리블)이 컷마다 번갈아 나옵니다. 아래에서 각 스타일 세부값을 조절하면 해당 컷들에 적용됩니다.'
+    :S.style==='mixed'
     ?'캔버스 천에 인쇄한 질감 위로 오일파스텔 획이 얹히고, 획은 프레임마다 다시 그려집니다. 컷이 길고 느리게 넘어갑니다.'
-    :neon?'사진이 두 컬러 듀오톤으로 물들고, 굵은 마커 윤곽선과 방사형 크레용 획, 손낙서 고리가 컷마다 새로 배치됩니다.'
+    :S.style==='neon'?'사진이 두 컬러 듀오톤으로 물들고, 굵은 마커 윤곽선과 방사형 크레용 획, 손낙서 고리가 컷마다 새로 배치됩니다.'
     :'사진이 종이처럼 찢겨(흰 속살이 보이는 가장자리) 콜라주로 얹히고, 크레용 낙서와 오려붙인 글자가 함께 배치됩니다. 사진마다 다른 모양으로 찢깁니다.';
   textCache={};
 }
@@ -1438,7 +1500,7 @@ document.getElementById('share').onclick=shareFile;
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 function syncAll(){
   ta.value=S.text;syncStyle();syncTone();syncFrame();syncAcc();syncAcc2();
-  syncMotion();syncTexttype();syncFont();
+  syncMotion();syncTexttype();syncFont();syncHalftone();
   rangeEls.forEach(el=>el._sync());applyStyleUI();
 }
 function restore(){
